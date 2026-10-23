@@ -1,0 +1,5 @@
+reports/*.md
+state/tmp/
+state/*
+!state/.gitkeep
+!reports/.gitkeep
