@@ -380,20 +380,32 @@ check_int_06() {
     fi
 
     local -a dirs=()
-    local d
+    local -A seen_dir=()
+    local d rd
     for d in /usr/bin /usr/sbin /bin /sbin /usr/local/bin /usr/local/sbin /opt; do
-        [ -d "$d" ] && dirs+=("$d")
+        [ -d "$d" ] || continue
+        # /bin y /sbin suelen ser enlaces a /usr/bin y /usr/sbin.
+        rd=$(readlink -f -- "$d" 2>/dev/null || printf '%s' "$d")
+        [ -n "${seen_dir[$rd]:-}" ] && continue
+        seen_dir[$rd]=1
+        # En quick se omite /opt para no disparar el timeout del escaneo.
+        if [ "$d" = '/opt' ] && [ "${PROFILE:-full}" = 'quick' ]; then
+            continue
+        fi
+        dirs+=("$d")
     done
     if [ "${#dirs[@]}" -eq 0 ]; then
         emit "$id" SKIP 'no se encontraron directorios de binarios'
         return
     fi
 
-    local out rc
-    out=$(with_timeout "$(scan_timeout)" getcap -r "${dirs[@]}" 2>/dev/null)
+    local out rc t
+    t=$(scan_timeout)
+    [ "${PROFILE:-full}" = 'quick' ] && t=5
+    out=$(with_timeout "$t" getcap -r "${dirs[@]}" 2>/dev/null)
     rc=$?
-    if [ "$rc" -eq 124 ] && [ -z "$out" ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout'
+    if [ "$rc" -eq 124 ]; then
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
         return
     fi
     if [ -z "$out" ]; then

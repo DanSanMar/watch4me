@@ -266,14 +266,14 @@ compute_exit_code() {
 }
 
 status_icon() {
-    local color=1
-    if [ "$UI_COLOR" -eq 0 ]; then color=0; fi
+    local fancy=0
+    if [ "$UI_COLOR" -eq 1 ] && [ "${UI_UTF8:-0}" -eq 1 ]; then fancy=1; fi
     case "$1" in
-        PASS) [ "$color" -eq 1 ] && printf '%s✔%s' "$C_GREEN_B" "$C_RESET" || printf '+' ;;
-        WARN) [ "$color" -eq 1 ] && printf '%s!%s' "$C_YELLOW_B" "$C_RESET" || printf '!' ;;
-        FAIL) [ "$color" -eq 1 ] && printf '%s✖%s' "$C_RED_B" "$C_RESET" || printf 'x' ;;
-        SKIP) [ "$color" -eq 1 ] && printf '%s○%s' "$C_DIM" "$C_RESET" || printf '-' ;;
-        INFO) [ "$color" -eq 1 ] && printf '%sℹ%s' "$C_CYAN" "$C_RESET" || printf 'i' ;;
+        PASS) [ "$fancy" -eq 1 ] && printf '%s✔%s' "$C_GREEN_B" "$C_RESET" || printf '+' ;;
+        WARN) [ "$fancy" -eq 1 ] && printf '%s!%s' "$C_YELLOW_B" "$C_RESET" || printf '!' ;;
+        FAIL) [ "$fancy" -eq 1 ] && printf '%s✖%s' "$C_RED_B" "$C_RESET" || printf 'x' ;;
+        SKIP) [ "$fancy" -eq 1 ] && printf '%s○%s' "$C_DIM" "$C_RESET" || printf '-' ;;
+        INFO) [ "$fancy" -eq 1 ] && printf '%sℹ%s' "$C_CYAN" "$C_RESET" || printf 'i' ;;
         *) printf '?' ;;
     esac
 }

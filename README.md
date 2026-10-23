@@ -2,10 +2,10 @@
 
 Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en Markdown.
 
-Estado actual: **M2** — 70 checks en 8 dominios, multi-distro, scoring global y por dominio, y `explain` enriquecido.
+Estado actual: **M2 + pulido de salida (v0.3.0)** — 70 checks en 8 dominios, resumen ejecutivo con prioridades, guía de actuación y `explain` enriquecido.
 
 ```text
---- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.2.0 ---
+--- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.3.0 ---
  perfil: full · host: arch-cosmic · distro: arch · root: no
 ```
 
@@ -44,9 +44,9 @@ Sin terminal (cron, pipe) no pregunta: solo guarda con `--save`.
 
 | Opción | Efecto |
 |---|---|
-| `--profile quick\|full` | `quick` usa timeouts de 8 s y omite la verificación completa de paquetes (INT-02) |
+| `--profile quick\|full` | `quick` usa timeouts de 5-8 s, omite INT-02 y puede omitir escaneos que no terminen a tiempo |
 | `--save [ruta]` | guarda sin preguntar; sin ruta usa `reports/`; `-` = stdout |
-| `--no-anim` | cabecera estática |
+| `--no-anim` | cabecera estática; el progreso sigue visible en terminal |
 | `--no-color` | sin colores (también `NO_COLOR=1`) |
 | `--sudo` | usa `sudo -n` para lecturas que requieren root; nunca pide contraseña |
 
@@ -60,6 +60,20 @@ Sin terminal (cron, pipe) no pregunta: solo guarda con `--save`.
 | `1` | avisos o fallos no críticos |
 | `2` | al menos un fallo crítico |
 | `64` | uso incorrecto o modo no disponible (`baseline`, `monitor`) |
+
+### Salida
+
+Mientras analiza, la cabecera muestra el check en curso, una barra de progreso y el tiempo transcurrido. En terminales estrechas se usa una cabecera compacta; con `--no-anim` o `NO_COLOR` se mantiene una línea de progreso.
+
+El informe de terminal es deliberadamente resumido:
+
+1. **Resumen** con score, barra y contadores.
+2. **Fallos** confirmados, con severidad y explicación.
+3. **Avisos** en una línea por hallazgo, ordenados por gravedad.
+4. **Por dominio**, una tabla compacta de correctos/fallos/avisos/omitidos.
+5. **Cómo leer y actuar**: prioridad, contexto y valoración del peligro.
+
+El informe Markdown conserva el detalle completo, la evidencia y los remedios de cada check. `--save -` emite solo ese Markdown.
 
 ## Catálogo de checks (70)
 
@@ -238,7 +252,7 @@ state/                   estado interno (futuro baseline)
 ## Roadmap
 
 - **M1** ✅ CLI, cabecera animada, 12 checks, informes y licencia
-- **M2** ✅ catálogo de 70 checks, scoring por dominio y `explain --list` / múltiples IDs
+- **M2** ✅ catálogo de 70 checks, scoring por dominio, `explain --list` / múltiples IDs y pulido de salida (v0.3.0)
 - **M3** baseline + `monitor` con notificación de sistema (`notify-send` / journal) y timer de usuario
 - **M4** documentación, tests y `shellcheck` limpio
 
@@ -246,5 +260,5 @@ state/                   estado interno (futuro baseline)
 
 GPLv3. Ver [LICENSE](LICENSE).
 
-La cabecera animada (cambio de color por segundo y redibujado con `\e[H`/`\e[K`) deriva de
+La cabecera animada (cambio de color y redibujado con `\e[H`/`\e[K`) deriva de
 [dash4me](https://github.com/DanSanMar/dash4me), Copyright (C) DanSanMar, GPLv3.

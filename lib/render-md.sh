@@ -12,6 +12,10 @@ _md_status_label() {
     esac
 }
 
+_md_escape() {
+    printf '%s' "$1" | sed 's/|/\\|/g'
+}
+
 _md_finding() {
     local id=$1
     local st sev title detail evidence
@@ -43,7 +47,7 @@ _md_section() {
     local title=$1
     shift
     local -a ids=("$@")
-    printf '## %s\n\n' "$title"
+    printf '### %s\n\n' "$title"
     if [ "${#ids[@]}" -eq 0 ]; then
         printf 'Sin hallazgos.\n\n'
         return
@@ -54,13 +58,89 @@ _md_section() {
     done
 }
 
+_md_summary() {
+    local crit_fail=0 high_fail=0 mid_fail=0 id st sev verdict
+    for id in "${CHECK_IDS[@]}"; do
+        st=$(status_of "$id")
+        [ "$st" = FAIL ] || continue
+        sev=${CHECK_SEVERITY[$id]}
+        case "$sev" in
+            critical) crit_fail=$(( crit_fail + 1 )) ;;
+            high) high_fail=$(( high_fail + 1 )) ;;
+            *) mid_fail=$(( mid_fail + 1 )) ;;
+        esac
+    done
+
+    if [ "$crit_fail" -gt 0 ]; then
+        verdict="Hay $crit_fail fallo(s) crítico(s). Actúa sobre ellos antes de cualquier otra mejora."
+    elif [ "${COUNT[FAIL]}" -gt 0 ]; then
+        verdict="No hay fallos críticos, pero hay ${COUNT[FAIL]} fallo(s) que conviene corregir."
+    elif [ "${COUNT[WARN]}" -gt 0 ]; then
+        verdict="Sin fallos confirmados; hay ${COUNT[WARN]} aviso(s) de hardening para revisar."
+    else
+        verdict='Sin hallazgos relevantes.'
+    fi
+
+    printf '## Resumen ejecutivo\n\n'
+    printf -- '- **Score:** %d/100 (%s)\n' "$GLOBAL_SCORE" "$(score_verdict "$GLOBAL_SCORE")"
+    printf -- '- **Fallos:** %d (críticos %d · altos %d · medios y bajos %d)\n' \
+        "${COUNT[FAIL]}" "$crit_fail" "$high_fail" "$mid_fail"
+    printf -- '- **Avisos:** %d · **Omitidos:** %d · **Informativos:** %d\n' \
+        "${COUNT[WARN]}" "${COUNT[SKIP]}" "${COUNT[INFO]}"
+    printf -- '- **Duración:** %ss\n\n' "${ELAPSED:-0}"
+    printf '**Veredicto:** %s\n\n' "$verdict"
+}
+
+_md_priorities() {
+    local sev st id detail n=0
+    printf '## Prioridades\n\n'
+    printf '| Estado | Severidad | Check | Qué ocurre |\n'
+    printf '|---|---|---|---|\n'
+
+    for sev in critical high medium low; do
+        for st in FAIL WARN; do
+            for id in "${CHECK_IDS[@]}"; do
+                [ "${CHECK_SEVERITY[$id]}" = "$sev" ] || continue
+                [ "$(status_of "$id")" = "$st" ] || continue
+                n=$(( n + 1 ))
+                detail=$(detail_of "$id")
+                printf '| %s | %s | `%s` · %s | %s |\n' \
+                    "$(_md_status_label "$st")" "$(sev_label "$sev")" \
+                    "$id" "$(_md_escape "${CHECK_TITLE[$id]}")" \
+                    "$(_md_escape "${detail:-sin detalle}")"
+            done
+        done
+    done
+
+    if [ "$n" -eq 0 ]; then
+        printf '\nSin fallos ni avisos.\n'
+    fi
+    printf '\n'
+}
+
+_md_guide() {
+    printf '## Cómo interpretar y actuar\n\n'
+    printf '**Puntuación.** 80-100 indica buen estado; 50-79, mejorable; por debajo de 50, crítico. La nota es orientativa: un fallo crítico aislado puede ser más grave que muchos avisos juntos.\n\n'
+    printf '**Gravedad.**\n\n'
+    printf -- '- **Crítica:** acceso remoto o root sin control, malware o persistencia. Actúa de inmediato.\n'
+    printf -- '- **Alta:** escalada local, servicio expuesto o paquetes alterados. Corrige pronto.\n'
+    printf -- '- **Media:** hardening incompleto; reduce el margen de defensa.\n'
+    printf -- '- **Baja:** higiene y configuraciones de bajo impacto.\n\n'
+    printf '**Qué hacer con los resultados.**\n\n'
+    printf '1. Empieza por los fallos críticos y altos; no intentes corregirlo todo a la vez.\n'
+    printf '2. Revisa el contexto de cada hallazgo antes de aplicar el remedio: exposición a Internet, usuarios, datos y servicios afectados.\n'
+    printf '3. Consulta el detalle y los comandos sugeridos con `./watch4me.sh explain <ID>`.\n'
+    printf '4. Aplica un cambio cada vez, en una ventana de mantenimiento, y vuelve a ejecutar la auditoría.\n'
+    printf '5. Guarda el informe con `--save` para comparar el antes y el después.\n\n'
+    printf 'Un aviso puede ser una decisión deliberada de tu configuración. Confirma que encaja con tu uso antes de cambiarlo. watch4me no modifica el sistema: todos los comandos son sugerencias.\n\n'
+}
+
 render_md() {
-    local host kernel now root_txt exit_code=0
+    local host kernel now root_txt
     host=${HOSTNAME_SHORT:-$(hostname 2>/dev/null || printf 'localhost')}
     kernel=$(uname -r 2>/dev/null || printf 'desconocido')
     now=$(date '+%Y-%m-%d %H:%M:%S %Z')
     if [ "$(id -u)" -eq 0 ]; then root_txt='sí'; else root_txt='no'; fi
-    compute_exit_code || exit_code=$?
 
     printf '# watch4me — informe de seguridad\n\n'
     printf -- '- **Host:** %s\n' "$host"
@@ -72,17 +152,10 @@ render_md() {
     printf -- '- **Resultado:** %d correctos · %d fallos · %d avisos · %d omitidos · %d informativos\n\n' \
         "${COUNT[PASS]}" "${COUNT[FAIL]}" "${COUNT[WARN]}" "${COUNT[SKIP]}" "${COUNT[INFO]}"
 
-    printf '## Resumen por dominio\n\n'
-    printf '| Dominio | Score | Fallos | Avisos | Omitidos |\n'
-    printf '|---|---:|---:|---:|---:|\n'
-    local dom
-    for dom in SYS USR NET SVC FS AUTH INT MAL; do
-        [ "${DOMAIN_TOTAL[$dom]:-0}" -gt 0 ] || continue
-        printf '| %s | %d/100 | %d | %d | %d |\n' \
-            "${DOMAIN_NAME[$dom]:-$dom}" "${DOMAIN_SCORE[$dom]:-100}" \
-            "${DOMAIN_FAIL[$dom]:-0}" "${DOMAIN_WARN[$dom]:-0}" "${DOMAIN_SKIP[$dom]:-0}"
-    done
-    printf '\n'
+    _md_summary
+    _md_priorities
+
+    printf '## Detalle completo\n\n'
 
     local id st sev
     local -a crit=() high=() mid=() warn=() info=() skip=() pass=()
@@ -111,7 +184,7 @@ render_md() {
     _md_section 'Informativo' "${info[@]}"
     _md_section 'Controles omitidos' "${skip[@]}"
 
-    printf '## Controles superados\n\n'
+    printf '### Controles superados\n\n'
     if [ "${#pass[@]}" -eq 0 ]; then
         printf 'Ninguno.\n\n'
     else
@@ -123,7 +196,9 @@ render_md() {
         printf '\n\n'
     fi
 
+    _md_guide
+
     printf -- '---\n\n'
     printf 'Generado por watch4me v%s · licencia GPLv3 · la cabecera animada deriva de [dash4me](https://github.com/DanSanMar/dash4me)\n' \
-        "${VERSION:-0.1.0}"
+        "${VERSION:-0.3.0}"
 }

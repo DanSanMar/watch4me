@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.2.0'
+VERSION='0.3.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -176,48 +176,81 @@ run_checks() {
 
     local total=${#CHECK_IDS[@]}
     printf '0\n' > "$RUN_DIR/progress"
+    : > "$RUN_DIR/current"
+
+    # Cabecera y primer frame antes de lanzar los checks: la ejecución
+    # nunca empieza con la pantalla en blanco.
+    if [ "$UI_QUIET" -eq 0 ]; then
+        if [ "$UI_ANIM" -eq 1 ]; then
+            ui_header_open
+            ui_frame 0 0 "$total"
+        else
+            ui_header_plain
+            [ "$UI_PROGRESS" -eq 1 ] && ui_progress_frame 0 "$total" 0
+        fi
+    fi
 
     (
         trap - EXIT INT TERM HUP
         local n=0 id
         for id in "${CHECK_IDS[@]}"; do
+            printf '%s\n' "$id" > "$RUN_DIR/current"
             run_single_check "$id"
             n=$(( n + 1 ))
             printf '%s\n' "$n" > "$RUN_DIR/progress"
         done
+        : > "$RUN_DIR/current"
     ) &
     local pid=$!
     BG_PID=$pid
 
-    if [ "$UI_ANIM" -eq 1 ]; then
-        ui_header_open
-        local frame=0 start_ms now_ms done_n
-        start_ms=$(date +%s%3N)
+    local frame=0 start_ms now_ms done_n elapsed
+    start_ms=$(date +%s%3N)
 
-        while kill -0 "$pid" 2>/dev/null; do
-            frame=$(( frame + 1 ))
-            done_n=$(cat "$RUN_DIR/progress" 2>/dev/null || printf '0')
-            [[ "$done_n" =~ ^[0-9]+$ ]] || done_n=0
-            ui_frame "$frame" "$done_n" "$total"
-            sleep 0.12
-        done
-        wait "$pid" 2>/dev/null || true
-        BG_PID=''
-
-        # Duración mínima para que la animación no parezca un parpadeo.
+    while kill -0 "$pid" 2>/dev/null; do
+        frame=$(( frame + 1 ))
+        done_n=$(cat "$RUN_DIR/progress" 2>/dev/null || printf '0')
+        [[ "$done_n" =~ ^[0-9]+$ ]] || done_n=0
+        UI_CURRENT=$(cat "$RUN_DIR/current" 2>/dev/null || true)
         now_ms=$(date +%s%3N)
-        while [ $(( now_ms - start_ms )) -lt 600 ]; do
-            frame=$(( frame + 1 ))
+        elapsed=$(( (now_ms - start_ms) / 1000 ))
+        UI_ELAPSED=$elapsed
+
+        if [ "$UI_QUIET" -eq 0 ]; then
+            if [ "$UI_ANIM" -eq 1 ]; then
+                ui_frame "$frame" "$done_n" "$total"
+            elif [ "$UI_PROGRESS" -eq 1 ]; then
+                ui_progress_frame "$done_n" "$total" "$elapsed"
+            fi
+        fi
+        sleep 0.12
+    done
+    wait "$pid" 2>/dev/null || true
+    BG_PID=''
+    UI_CURRENT=''
+
+    now_ms=$(date +%s%3N)
+    elapsed=$(( (now_ms - start_ms) / 1000 ))
+    UI_ELAPSED=$elapsed
+
+    if [ "$UI_QUIET" -eq 0 ]; then
+        if [ "$UI_ANIM" -eq 1 ]; then
+            # Duración mínima para que la animación no parezca un parpadeo.
+            while [ $(( now_ms - start_ms )) -lt 700 ]; do
+                frame=$(( frame + 1 ))
+                ui_frame "$frame" "$total" "$total"
+                sleep 0.05
+                now_ms=$(date +%s%3N)
+            done
             ui_frame "$frame" "$total" "$total"
-            sleep 0.05
-            now_ms=$(date +%s%3N)
-        done
-        ui_frame "$frame" "$total" "$total"
-        ui_header_close
-    else
-        wait "$pid" 2>/dev/null || true
-        BG_PID=''
+            ui_header_close
+        elif [ "$UI_PROGRESS" -eq 1 ]; then
+            ui_progress_close
+        fi
     fi
+
+    now_ms=$(date +%s%3N)
+    ELAPSED=$(( (now_ms - start_ms) / 1000 ))
 }
 
 resolve_report_path() {
@@ -345,6 +378,11 @@ main() {
     [ "$SAVE_TO" = '-' ] && NO_ANIM_FLAG=1
 
     ui_init
+    if [ "$SAVE_TO" = '-' ]; then
+        # stdout es el informe Markdown: ni cabecera ni progreso.
+        UI_QUIET=1
+        UI_PROGRESS=0
+    fi
     ui_trap_install
     detect_distro
 
@@ -374,19 +412,13 @@ main() {
     load_checks
     init_run_dir
 
+    run_checks
+
     if [ "$SAVE_TO" = '-' ]; then
-        run_checks
         compute_scores
         render_md
         compute_exit_code
         return $?
-    fi
-
-    if [ "$UI_ANIM" -eq 1 ]; then
-        run_checks
-    else
-        ui_header_plain
-        run_checks
     fi
 
     compute_scores
