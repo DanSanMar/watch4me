@@ -74,6 +74,13 @@ OPCIONES
   -h, --help             muestra esta ayuda
   -v, --version          muestra la versión
 
+TIPOS DE AUDITORÍA
+  completa    70 checks y escaneos hasta 30 s. La más fiable (recomendada).
+  rápida      --profile quick: menos tiempo; puede omitir checks lentos.
+  con sudo    --sudo: más datos (sudoers, SSH, firewall, paquetes...).
+              Antes ejecuta "sudo -v": si no hay caché, esos checks se omiten.
+  guardar     --save: hace la completa y guarda informes .md y .json en reports/.
+
 MENÚ
   El menú usa fzf, que es opcional: la auditoría funciona sin él.
   Si fzf no está instalado, el menú ofrece instalarlo con el gestor de

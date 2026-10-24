@@ -171,17 +171,20 @@ menu_header() {
         # Muy estrecho: solo el contador para no robar líneas a fzf.
         printf ' %s%d checks%s\n' "$C_DIM" "${#CHECK_IDS[@]}" "$C_RESET"
     fi
-    if [ "${UI_WIDTH:-0}" -ge 70 ]; then
-        printf ' %sMenú interactivo%s %s %sENTER ejecutar%s %s %sEscribe para filtrar%s %s %sESC salir%s\n\n' \
+    if [ "${UI_WIDTH:-0}" -ge 62 ]; then
+        printf ' %sCompleta = más fiable%s %s %sRápida = menos tiempo%s\n' \
             "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
-            "$C_DIM" "$C_RESET" "$sep" \
-            "$C_DIM" "$C_RESET" "$sep" \
+            "$C_BOLD$C_YELLOW_B" "$C_RESET"
+        printf ' %s+sudo = más datos%s %s %snunca pide contraseña%s\n\n' \
+            "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
             "$C_DIM" "$C_RESET"
+    elif [ "${UI_WIDTH:-0}" -ge 40 ]; then
+        printf ' %sCompleta%s %s %sRápida%s %s %s+sudo%s\n\n' \
+            "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
+            "$C_BOLD$C_YELLOW_B" "$C_RESET" "$sep" \
+            "$C_BOLD$C_CYAN_B" "$C_RESET"
     else
-        printf ' %sMenú%s %s %sENTER ejecutar%s %s %sESC salir%s\n\n' \
-            "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
-            "$C_DIM" "$C_RESET" "$sep" \
-            "$C_DIM" "$C_RESET"
+        printf ' %sMenú%s\n\n' "$C_BOLD$C_CYAN_B" "$C_RESET"
     fi
     menu_logo_start
 }
@@ -209,7 +212,7 @@ menu_fzf_height() {
     lines=$(menu_term_lines)
     [ "$lines" -gt 0 ] || lines=24
     h=$(( lines * 85 / 100 ))
-    max=$(( lines - 5 ))
+    max=$(( lines - 6 ))
     [ "$h" -gt "$max" ] && h=$max
     [ "$h" -lt 6 ] && h=6
     printf '%s' "$h"
@@ -362,16 +365,16 @@ menu_ensure_fzf() {
 menu_rows_main() {
     local sep
     sep=$(menu_sep)
-    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '▶' '>')${C_RESET} ${C_BOLD}Auditoría completa${C_RESET} ${C_DIM}${sep}${C_RESET} ${#CHECK_IDS[@]} checks ${sep} escaneos hasta 30 s" "audit-full"
-    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Auditoría rápida${C_RESET} ${C_DIM}${sep}${C_RESET} timeouts reducidos ${sep} revisión en segundos" "audit-quick"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Auditoría con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más lecturas con sudo -n ${sep} sin pedir contraseña" "audit-sudo"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔐' '[q]')${C_RESET} ${C_BOLD}Auditoría rápida con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} lo mejor de ambos perfiles" "audit-quick-sudo"
-    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '💾' '[w]')${C_RESET} ${C_BOLD}Auditar y guardar informe${C_RESET} ${C_DIM}${sep}${C_RESET} escribe .md y .json en reports/" "audit-save"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔎' '[?]')${C_RESET} ${C_BOLD}Explicar un check${C_RESET} ${C_DIM}${sep}${C_RESET} busca por ID, título o dominio" "explain-pick"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '📚' '[c]')${C_RESET} ${C_BOLD}Catálogo de checks${C_RESET} ${C_DIM}${sep}${C_RESET} los ${#CHECK_IDS[@]} checks agrupados por dominio" "explain-list"
-    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '📄' '[r]')${C_RESET} ${C_BOLD}Informes guardados${C_RESET} ${C_DIM}${sep}${C_RESET} consulta los .md y .json de reports/" "reports"
-    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '❓' '[h]')${C_RESET} ${C_BOLD}Ayuda y atajos${C_RESET} ${C_DIM}${sep}${C_RESET} comandos directos: --save, --profile, explain..." "help"
-    menu_row "${C_BOLD}${C_RED_B}$(ui_icon '⏻' '[x]')${C_RESET} ${C_BOLD}Salir${C_RESET} ${C_DIM}${sep}${C_RESET} cerrar el menú sin ejecutar nada" "quit"
+    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '▶' '>')${C_RESET} ${C_BOLD}Auditoría completa${C_RESET} ${C_DIM}${sep}${C_RESET} recomendada ${sep} ${#CHECK_IDS[@]} checks" "audit-full"
+    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Auditoría rápida${C_RESET} ${C_DIM}${sep}${C_RESET} menos tiempo ${sep} puede omitir checks" "audit-quick"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Completa con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más datos ${sep} no pide contraseña" "audit-sudo"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔐' '[q]')${C_RESET} ${C_BOLD}Rápida con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} rápida ${sep} más datos" "audit-quick-sudo"
+    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '💾' '[w]')${C_RESET} ${C_BOLD}Guardar informe${C_RESET} ${C_DIM}${sep}${C_RESET} completa ${sep} .md y .json" "audit-save"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔎' '[?]')${C_RESET} ${C_BOLD}Explicar un check${C_RESET} ${C_DIM}${sep}${C_RESET} detalle y remedio" "explain-pick"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '📚' '[c]')${C_RESET} ${C_BOLD}Catálogo de checks${C_RESET} ${C_DIM}${sep}${C_RESET} los ${#CHECK_IDS[@]} por dominio" "explain-list"
+    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '📄' '[r]')${C_RESET} ${C_BOLD}Informes guardados${C_RESET} ${C_DIM}${sep}${C_RESET} consulta .md y .json" "reports"
+    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '❓' '[h]')${C_RESET} ${C_BOLD}Ayuda y atajos${C_RESET} ${C_DIM}${sep}${C_RESET} comandos y guía" "help"
+    menu_row "${C_BOLD}${C_RED_B}$(ui_icon '⏻' '[x]')${C_RESET} ${C_BOLD}Salir${C_RESET} ${C_DIM}${sep}${C_RESET} cerrar sin ejecutar" "quit"
 }
 
 # ---------------------------------------------------------------------------
@@ -595,14 +598,14 @@ menu_pv_action() {
     case "$id" in
         audit-full)
             menu_pv_title 'AUDITORÍA COMPLETA'
-            menu_pv_text 'Analiza el sistema en los 8 dominios: sistema, usuarios,'
-            menu_pv_text 'red, servicios, ficheros, autenticación, integridad y malware.'
-            menu_pv_label 'QUÉ HACE'
-            menu_pv_text "Ejecuta los ${#CHECK_IDS[@]} checks con el perfil full:"
-            menu_pv_text 'escaneos de red de hasta 30 s y verificación de paquetes.'
+            menu_pv_text 'Recomendada: la revisión más fiable, con los 70 checks y tiempo suficiente.'
+            menu_pv_label 'CUÁNDO USARLA'
+            menu_pv_text 'Para una revisión seria del equipo. Tarda más, pero omite menos.'
+            menu_pv_label 'QUÉ INCLUYE'
+            menu_pv_text 'Los 8 dominios y la verificación de integridad de paquetes.'
+            menu_pv_text 'Al terminar ofrece guardar el informe .md y .json.'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_text 'Al terminar ofrece guardar el informe .md y .json en reports/.'
             menu_pv_label 'EQUIVALENTE EN CLI'
             menu_pv_cmd './watch4me.sh audit'
             menu_pv_label 'TIEMPO'
@@ -610,31 +613,30 @@ menu_pv_action() {
             ;;
         audit-quick)
             menu_pv_title 'AUDITORÍA RÁPIDA'
-            menu_pv_text 'Misma batería de checks con timeouts reducidos (5-8 s).'
-            menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Omite INT-02 (integridad de paquetes) y los escaneos que no'
-            menu_pv_text 'terminen a tiempo. El resto de dominios se mantiene.'
+            menu_pv_text 'La misma batería en menos tiempo. Puede omitir checks lentos.'
+            menu_pv_label 'CUÁNDO USARLA'
+            menu_pv_text 'Para una primera mirada o si tienes prisa: unos segundos.'
+            menu_pv_label 'QUÉ CAMBIA'
+            menu_pv_text 'Los escaneos bajan de 30 s a 8 s y se omite INT-02.'
+            menu_pv_text 'No es menos segura: es menos exhaustiva.'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_text 'Ideal para una revisión rápida antes de una auditoría completa.'
             menu_pv_label 'EQUIVALENTE EN CLI'
             menu_pv_cmd './watch4me.sh audit --profile quick'
             ;;
         audit-sudo|audit-quick-sudo)
             if [ "$id" = 'audit-quick-sudo' ]; then
-                menu_pv_title 'AUDITORÍA RÁPIDA CON SUDO'
-                menu_pv_text 'Perfil quick con lecturas privilegiadas.'
+                menu_pv_title 'RÁPIDA CON SUDO'
+                menu_pv_text 'La rápida, con lecturas de archivos protegidos.'
             else
-                menu_pv_title 'AUDITORÍA COMPLETA CON SUDO'
-                menu_pv_text 'Perfil full con lecturas privilegiadas.'
+                menu_pv_title 'COMPLETA CON SUDO'
+                menu_pv_text 'La completa, con lecturas de archivos protegidos.'
             fi
-            menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Permite leer ficheros y ejecutar consultas que requieren root'
-            menu_pv_text 'mediante «sudo -n»: sudoers, SSH, nftables, paquetes, etc.'
+            menu_pv_label 'QUÉ AÑADE'
+            menu_pv_text 'Más checks reales: sudoers, SSH, firewall, paquetes, procesos...'
+            menu_pv_text 'Lo que no pueda leer sale como «omitido», no como «fallo».'
             menu_pv_label 'IMPORTANTE'
-            menu_pv_text 'Nunca pide contraseña. Si la caché de sudo no está activa,'
-            menu_pv_text 'los checks que necesitan root salen SKIP (no FAIL).'
-            menu_pv_text 'Activa la caché antes con: sudo -v'
+            menu_pv_text 'Nunca pide contraseña. Activa antes la caché con: sudo -v'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura. No modifica el sistema.'
             menu_pv_label 'EQUIVALENTE EN CLI'
@@ -645,14 +647,15 @@ menu_pv_action() {
             fi
             ;;
         audit-save)
-            menu_pv_title 'AUDITAR Y GUARDAR'
-            menu_pv_text 'Ejecuta la auditoría completa y guarda el informe Markdown y JSON'
-            menu_pv_text 'sin preguntar.'
-            menu_pv_label 'DÓNDE'
-            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.md'
-            menu_pv_text 'y su pareja .json con los mismos datos estructurados.'
+            menu_pv_title 'GUARDAR INFORME'
+            menu_pv_text 'Hace la auditoría completa y guarda dos ficheros.'
+            menu_pv_label 'QUÉ GUARDA'
+            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.md  (para leer)'
+            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.json (para IA)'
+            menu_pv_label 'CUÁNDO USARLA'
+            menu_pv_text 'Antes y después de un cambio, para poder comparar.'
             menu_pv_label 'EFECTOS'
-            menu_pv_text 'Solo lectura del sistema. El único fichero escrito es el informe.'
+            menu_pv_text 'Solo lectura del sistema. Solo escribe los dos informes.'
             menu_pv_label 'EQUIVALENTE EN CLI'
             menu_pv_cmd './watch4me.sh audit --save'
             ;;

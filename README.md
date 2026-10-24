@@ -49,11 +49,13 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 
 | Acción | Qué hace |
 |---|---|
-| Auditoría completa | 70 checks con perfil `full` y escaneos hasta 30 s |
-| Auditoría rápida | Perfil `quick`, timeouts de 5-8 s, omite INT-02 |
-| Auditoría con sudo | Lecturas con `sudo -n`; nunca pide contraseña |
-| Auditoría rápida con sudo | Perfil `quick` + lecturas privilegiadas |
-| Auditar y guardar informe | Escribe el `.md` y el `.json` en `reports/` |
+| Auditoría completa | 70 checks con perfil `full` y escaneos hasta 30 s; la más fiable |
+| Auditoría rápida | Perfil `quick`, timeouts de 5-8 s, omite INT-02; para ir rápido |
+| Completa con sudo | Lecturas con `sudo -n`; más datos y nunca pide contraseña |
+| Rápida con sudo | Perfil `quick` + lecturas privilegiadas |
+| Guardar informe | Auditoría completa y guarda el `.md` y el `.json` en `reports/` |
+
+En dos palabras: **completa** es la recomendada; **rápida** cambia tiempo por exhaustividad; **con sudo** añade lecturas protegidas (activa antes la caché con `sudo -v`); **guardar** hace la completa y deja los dos informes.
 | Explicar un check | Buscador por ID, título o dominio con ficha y remedio |
 | Catálogo de checks | Los 70 checks agrupados por dominio |
 | Informes guardados | Lista y abre los `.md` y `.json` de `reports/` |
