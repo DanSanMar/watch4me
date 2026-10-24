@@ -279,10 +279,10 @@ _term_guide() {
         printf '  %sDetalle completo y remedios:%s ./watch4me.sh explain <ID>   %s·%s   informe: --save\n' \
             "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET"
         printf '  %sGenerado por watch4me v%s · GPLv3 · solo lectura%s\n' \
-            "$C_DIM" "${VERSION:-0.3.0}" "$C_RESET"
+            "$C_DIM" "${VERSION:-0.4.0}" "$C_RESET"
     else
         _term_wrap 'Detalle completo y remedios: ./watch4me.sh explain <ID> · informe: --save' 2 "$width"
-        _term_wrap "Generado por watch4me v${VERSION:-0.3.0} · GPLv3 · solo lectura" 2 "$width"
+        _term_wrap "Generado por watch4me v${VERSION:-0.4.0} · GPLv3 · solo lectura" 2 "$width"
     fi
 }
 

@@ -200,5 +200,5 @@ render_md() {
 
     printf -- '---\n\n'
     printf 'Generado por watch4me v%s · licencia GPLv3 · la cabecera animada deriva de [dash4me](https://github.com/DanSanMar/dash4me)\n' \
-        "${VERSION:-0.3.0}"
+        "${VERSION:-0.4.0}"
 }

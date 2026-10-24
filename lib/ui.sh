@@ -21,6 +21,11 @@ UI_HEADER_OPEN=0
 UI_RESTORED=0
 UI_CURRENT=''
 UI_ELAPSED=0
+# La animación de auditoría dura al menos UI_ANIM_MIN_MS y, al terminar los
+# checks, se mantiene UI_ANIM_TAIL_MS antes del informe. La velocidad de los
+# frames no cambia (sleep 0.05).
+UI_ANIM_MIN_MS=2000
+UI_ANIM_TAIL_MS=800
 BG_PID=''
 
 # Se llama tras parsear argumentos.
@@ -65,19 +70,22 @@ ui_init() {
         C_YELLOW_B=$'\e[93m'
         C_BLUE=$'\e[34m'
         C_BLUE_B=$'\e[94m'
+        C_BLUE_LIGHT=$'\e[38;5;117m'
         C_CYAN=$'\e[36m'
         C_CYAN_B=$'\e[96m'
         C_WHITE=$'\e[97m'
         C_MAGENTA_B=$'\e[95m'
     else
         C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_RED_B='' C_GREEN='' C_GREEN_B=''
-        C_YELLOW='' C_YELLOW_B='' C_BLUE='' C_BLUE_B='' C_CYAN='' C_CYAN_B=''
+        C_YELLOW='' C_YELLOW_B='' C_BLUE='' C_BLUE_B='' C_BLUE_LIGHT=''
+        C_CYAN='' C_CYAN_B=''
         C_WHITE='' C_MAGENTA_B=''
     fi
 
+    # Misma tabla que dash4me.sh: índice 0-9 = último dígito del segundo.
     PALETA=(
         "$C_RED" "$C_BLUE_B" "$C_GREEN_B" "$C_YELLOW_B" "$C_CYAN_B"
-        "$C_MAGENTA_B" "$C_RED_B" "$C_GREEN" "$C_YELLOW" "$C_CYAN"
+        "$C_RED_B" "$C_BLUE_LIGHT" "$C_GREEN" "$C_YELLOW" "$C_CYAN"
     )
 }
 
@@ -96,12 +104,50 @@ ui_icon() {
     fi
 }
 
+# Fecha y hora del logo ampliado (menú).
+ui_clock_time() {
+    date '+%H:%M:%S' 2>/dev/null || printf -- '--:--:--'
+}
+
+ui_clock_date() {
+    date '+%d/%m/%Y' 2>/dev/null || printf -- '--/--/----'
+}
+
+ui_clock() {
+    date '+%d/%m/%Y %H:%M:%S' 2>/dev/null || printf -- '--/--/---- --:--:--'
+}
+
+# Anchos mínimos para añadir datos al logo del menú, contando el icono ASCII
+# (más largo) cuando no hay UTF-8. Se dejan 3 columnas de margen para que la
+# línea nunca provoque un salto automático.
+ui_menu_extra_widths() {
+    if [ "$UI_UTF8" -eq 1 ]; then
+        UI_DT_MIN_WIDTH=78
+        UI_HOST_MIN_WIDTH=92
+        UI_C_TIME_WIDTH=43
+        UI_C_DATE_WIDTH=55
+        UI_C_TIME_ONLY_WIDTH=33
+    else
+        UI_DT_MIN_WIDTH=87
+        UI_HOST_MIN_WIDTH=101
+        UI_C_TIME_WIDTH=52
+        UI_C_DATE_WIDTH=64
+        UI_C_TIME_ONLY_WIDTH=42
+    fi
+}
+
 ui_line1() {
-    local off=${1:-0}
-    local c1 c2 c3 icon logo subtitle ver
+    local off=${1:-0} mode=${2:-}
+    local c1 c2 c3 c4 c5='' icon logo subtitle ver
+    # Desfases de dash4me.sh: logo +0, subtítulo +2, versión +5, datos +7/+9.
     c1=$(ui_palette "$off")
-    c2=$(ui_palette "$(( off + 5 ))")
-    c3=$(ui_palette "$(( off + 2 ))")
+    c2=$(ui_palette "$(( off + 2 ))")
+    c3=$(ui_palette "$(( off + 5 ))")
+    c4=$(ui_palette "$(( off + 7 ))")
+    if [ "$mode" = 'menu' ]; then
+        c5=$(ui_palette "$(( off + 9 ))")
+    fi
+    ui_menu_extra_widths
     if [ "$UI_UTF8" -eq 1 ]; then
         icon='🛡'
         subtitle='AUDITORÍA DE SEGURIDAD'
@@ -110,23 +156,53 @@ ui_line1() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.3.0}"
+    ver="v${VERSION:-0.4.0}"
 
     local line=""
+    local show_ver=1
     line+="${C_BLUE_B}---${C_RESET} "
     line+="${C_BLUE_B}${icon}${C_RESET} "
     line+="${c1}${C_BOLD}${logo}${C_RESET} "
     if [ "$UI_COMPACT" -eq 0 ]; then
         line+="${C_DIM}|${C_RESET} "
         line+="${c2}${subtitle}${C_RESET} "
+    else
+        # Cabecera compacta: a cambio del subtítulo, hora y fecha si caben.
+        if [ "${UI_WIDTH:-0}" -ge "${UI_C_TIME_WIDTH:-43}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${c4}$(ui_clock_time)${C_RESET} "
+        elif [ "${UI_WIDTH:-0}" -ge "${UI_C_TIME_ONLY_WIDTH:-33}" ]; then
+            # Muy estrecho: la hora es más útil que la versión.
+            line+="${C_DIM}|${C_RESET} "
+            line+="${c4}$(ui_clock_time)${C_RESET} "
+            show_ver=0
+        fi
+        if [ "${UI_WIDTH:-0}" -ge "${UI_C_DATE_WIDTH:-55}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${c5:-$c4}$(ui_clock_date)${C_RESET} "
+        fi
     fi
-    line+="${C_DIM}|${C_RESET} "
-    line+="${c3}${ver}${C_RESET} "
+    if [ "$show_ver" -eq 1 ]; then
+        line+="${C_DIM}|${C_RESET} "
+        line+="${c3}${ver}${C_RESET} "
+    fi
+    if [ "$UI_COMPACT" -eq 0 ]; then
+        if [ "${UI_WIDTH:-0}" -ge "${UI_DT_MIN_WIDTH:-78}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${c4}$(ui_clock)${C_RESET} "
+        fi
+        if [ "$mode" = 'menu' ] \
+            && [ "${UI_WIDTH:-0}" -ge "${UI_HOST_MIN_WIDTH:-92}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${c5}${HOSTNAME_SHORT:-localhost}${C_RESET} "
+        fi
+    fi
     line+="${C_BLUE_B}---${C_RESET}"
     printf '%s' "$line"
 }
 
 ui_line1_static() {
+    local mode=${1:-}
     local icon logo subtitle ver
     if [ "$UI_UTF8" -eq 1 ]; then
         icon='🛡'
@@ -136,18 +212,47 @@ ui_line1_static() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.3.0}"
+    ver="v${VERSION:-0.4.0}"
 
     local line=""
+    local show_ver=1
     line+="${C_BLUE_B}---${C_RESET} "
     line+="${C_BLUE_B}${icon}${C_RESET} "
     line+="${C_CYAN_B}${C_BOLD}${logo}${C_RESET} "
     if [ "$UI_COMPACT" -eq 0 ]; then
         line+="${C_DIM}|${C_RESET} "
         line+="${C_CYAN}${subtitle}${C_RESET} "
+    else
+        ui_menu_extra_widths
+        if [ "${UI_WIDTH:-0}" -ge "${UI_C_TIME_WIDTH:-43}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${C_GREEN_B}$(ui_clock_time)${C_RESET} "
+        elif [ "${UI_WIDTH:-0}" -ge "${UI_C_TIME_ONLY_WIDTH:-33}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${C_GREEN_B}$(ui_clock_time)${C_RESET} "
+            show_ver=0
+        fi
+        if [ "${UI_WIDTH:-0}" -ge "${UI_C_DATE_WIDTH:-55}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${C_BLUE_LIGHT}$(ui_clock_date)${C_RESET} "
+        fi
     fi
-    line+="${C_DIM}|${C_RESET} "
-    line+="${C_MAGENTA_B}${ver}${C_RESET} "
+    if [ "$show_ver" -eq 1 ]; then
+        line+="${C_DIM}|${C_RESET} "
+        line+="${C_MAGENTA_B}${ver}${C_RESET} "
+    fi
+    if [ "$UI_COMPACT" -eq 0 ]; then
+        ui_menu_extra_widths
+        if [ "${UI_WIDTH:-0}" -ge "${UI_DT_MIN_WIDTH:-78}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${C_GREEN_B}$(ui_clock)${C_RESET} "
+        fi
+        if [ "$mode" = 'menu' ] \
+            && [ "${UI_WIDTH:-0}" -ge "${UI_HOST_MIN_WIDTH:-92}" ]; then
+            line+="${C_DIM}|${C_RESET} "
+            line+="${C_BLUE_LIGHT}${HOSTNAME_SHORT:-localhost}${C_RESET} "
+        fi
+    fi
     line+="${C_BLUE_B}---${C_RESET}"
     printf '%s' "$line"
 }

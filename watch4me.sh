@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.3.0'
+VERSION='0.4.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -21,6 +21,8 @@ LIB_DIR="$SCRIPT_DIR/lib"
 
 # shellcheck source=lib/common.sh
 . "$LIB_DIR/common.sh"
+# shellcheck source=lib/menu.sh
+. "$LIB_DIR/menu.sh"
 # shellcheck source=lib/ui.sh
 . "$LIB_DIR/ui.sh"
 # shellcheck source=lib/distro.sh
@@ -40,6 +42,8 @@ NO_COLOR_FLAG=0
 USE_SUDO=0
 EXPLAIN_LIST=0
 declare -a EXPLAIN_IDS=()
+PREVIEW_KIND=''
+PREVIEW_ARG=''
 HOSTNAME_SHORT=$(hostname -s 2>/dev/null || uname -n 2>/dev/null || printf 'localhost')
 RUN_DIR=''
 
@@ -48,12 +52,15 @@ usage() {
 watch4me v$VERSION — auditoría de seguridad local (solo lectura)
 
 USO
-  ./watch4me.sh [audit] [opciones]
+  ./watch4me.sh                 menú interactivo (TTY) o auditoría (sin TTY)
+  ./watch4me.sh menu            fuerza el menú interactivo (requiere fzf)
+  ./watch4me.sh audit [opciones]
   ./watch4me.sh explain <ID> [<ID>...]
   ./watch4me.sh explain --list
   ./watch4me.sh --help
 
 OPCIONES
+  -m, --menu             abre el menú interactivo (requiere fzf)
   --profile quick|full   quick reduce los timeouts de red (por defecto: full)
   --save [ruta]          guarda el informe Markdown sin preguntar
                          sin ruta usa reports/; con "-" lo escribe por stdout
@@ -63,11 +70,18 @@ OPCIONES
   -h, --help             muestra esta ayuda
   -v, --version          muestra la versión
 
+MENÚ
+  El menú usa fzf, que es opcional: la auditoría funciona sin él.
+  Si fzf no está instalado, el menú ofrece instalarlo con el gestor de
+  la distribución tras confirmación explícita. Es la única acción del
+  programa que modifica el sistema; las auditorías son solo lectura.
+  Para desactivar esa oferta: WATCH4ME_NO_INSTALL=1 ./watch4me.sh menu
+
 EJEMPLOS
   ./watch4me.sh
-  ./watch4me.sh --profile quick
-  ./watch4me.sh --save
-  ./watch4me.sh --save - > informe.md
+  ./watch4me.sh audit --profile quick
+  ./watch4me.sh audit --save
+  ./watch4me.sh audit --save - > informe.md
   ./watch4me.sh explain --list
   ./watch4me.sh explain NET-01 SVC-07
 
@@ -83,9 +97,17 @@ EOF
 }
 
 parse_args() {
+    local arg_count=$#
     while [ $# -gt 0 ]; do
         case "$1" in
+            __preview)
+                MODE=preview
+                PREVIEW_KIND=${2:-}
+                PREVIEW_ARG=${3:-}
+                shift 2 2>/dev/null || true
+                ;;
             audit) MODE=audit ;;
+            menu|--menu|-m) MODE=menu ;;
             baseline|monitor)
                 MODE=$1
                 ;;
@@ -138,7 +160,15 @@ parse_args() {
         shift
     done
 
-    [ -n "$MODE" ] || MODE=audit
+    [ -n "$MODE" ] || {
+        if [ "$arg_count" -eq 0 ] \
+            && [ -t 0 ] && [ -t 1 ] \
+            && [ "${TERM:-dumb}" != 'dumb' ]; then
+            MODE=menu
+        else
+            MODE=audit
+        fi
+    }
 
     case "$PROFILE" in
         quick|full) ;;
@@ -204,7 +234,7 @@ run_checks() {
     local pid=$!
     BG_PID=$pid
 
-    local frame=0 start_ms now_ms done_n elapsed
+    local frame=0 start_ms now_ms done_n elapsed tail_ms tail_end
     start_ms=$(date +%s%3N)
 
     while kill -0 "$pid" 2>/dev/null; do
@@ -235,8 +265,18 @@ run_checks() {
 
     if [ "$UI_QUIET" -eq 0 ]; then
         if [ "$UI_ANIM" -eq 1 ]; then
-            # Duración mínima para que la animación no parezca un parpadeo.
-            while [ $(( now_ms - start_ms )) -lt 700 ]; do
+            # Duración mínima para que el logo se vea antes del informe.
+            # La velocidad de frame no cambia (sleep 0.05).
+            while [ $(( now_ms - start_ms )) -lt "${UI_ANIM_MIN_MS:-2000}" ]; do
+                frame=$(( frame + 1 ))
+                ui_frame "$frame" "$total" "$total"
+                sleep 0.05
+                now_ms=$(date +%s%3N)
+            done
+            # Alarga un poco la permanencia del logo al terminar los checks.
+            tail_ms=${UI_ANIM_TAIL_MS:-800}
+            tail_end=$(( now_ms + tail_ms ))
+            while [ "$now_ms" -lt "$tail_end" ]; do
                 frame=$(( frame + 1 ))
                 ui_frame "$frame" "$total" "$total"
                 sleep 0.05
@@ -394,6 +434,16 @@ main() {
         version)
             printf 'watch4me %s\n' "$VERSION"
             return 0
+            ;;
+        preview)
+            load_checks
+            menu_preview "$PREVIEW_KIND" "$PREVIEW_ARG"
+            return $?
+            ;;
+        menu)
+            load_checks
+            menu_main
+            return $?
             ;;
         baseline|monitor)
             printf 'watch4me: el modo %s se implementa en el hito M3 (baseline y vigilancia).\n' "$MODE" >&2
