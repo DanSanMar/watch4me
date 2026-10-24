@@ -3,13 +3,7 @@
 # Licencia: GPLv3
 
 _md_status_label() {
-    case "$1" in
-        PASS) printf 'correcto' ;;
-        WARN) printf 'aviso' ;;
-        FAIL) printf 'fallo' ;;
-        SKIP) printf 'omitido' ;;
-        *) printf 'informativo' ;;
-    esac
+    status_label "$1"
 }
 
 _md_escape() {
@@ -59,7 +53,7 @@ _md_section() {
 }
 
 _md_summary() {
-    local crit_fail=0 high_fail=0 mid_fail=0 id st sev verdict
+    local crit_fail=0 high_fail=0 mid_fail=0 id st sev
     for id in "${CHECK_IDS[@]}"; do
         st=$(status_of "$id")
         [ "$st" = FAIL ] || continue
@@ -71,16 +65,6 @@ _md_summary() {
         esac
     done
 
-    if [ "$crit_fail" -gt 0 ]; then
-        verdict="Hay $crit_fail fallo(s) crítico(s). Actúa sobre ellos antes de cualquier otra mejora."
-    elif [ "${COUNT[FAIL]}" -gt 0 ]; then
-        verdict="No hay fallos críticos, pero hay ${COUNT[FAIL]} fallo(s) que conviene corregir."
-    elif [ "${COUNT[WARN]}" -gt 0 ]; then
-        verdict="Sin fallos confirmados; hay ${COUNT[WARN]} aviso(s) de hardening para revisar."
-    else
-        verdict='Sin hallazgos relevantes.'
-    fi
-
     printf '## Resumen ejecutivo\n\n'
     printf -- '- **Score:** %d/100 (%s)\n' "$GLOBAL_SCORE" "$(score_verdict "$GLOBAL_SCORE")"
     printf -- '- **Fallos:** %d (críticos %d · altos %d · medios y bajos %d)\n' \
@@ -88,7 +72,7 @@ _md_summary() {
     printf -- '- **Avisos:** %d · **Omitidos:** %d · **Informativos:** %d\n' \
         "${COUNT[WARN]}" "${COUNT[SKIP]}" "${COUNT[INFO]}"
     printf -- '- **Duración:** %ss\n\n' "${ELAPSED:-0}"
-    printf '**Veredicto:** %s\n\n' "$verdict"
+    printf '**Veredicto:** %s\n\n' "$(audit_verdict_text)"
 }
 
 _md_priorities() {
@@ -200,5 +184,5 @@ render_md() {
 
     printf -- '---\n\n'
     printf 'Generado por watch4me v%s · licencia GPLv3 · la cabecera animada deriva de [dash4me](https://github.com/DanSanMar/dash4me)\n' \
-        "${VERSION:-0.4.0}"
+        "${VERSION:-0.5.0}"
 }

@@ -87,6 +87,37 @@ sev_label() {
     esac
 }
 
+status_label() {
+    case "$1" in
+        PASS) printf 'correcto' ;;
+        WARN) printf 'aviso' ;;
+        FAIL) printf 'fallo' ;;
+        SKIP) printf 'omitido' ;;
+        *) printf 'informativo' ;;
+    esac
+}
+
+# Veredicto común a los informes Markdown y JSON.
+audit_verdict_text() {
+    local crit_fail=0 id st sev
+    for id in "${CHECK_IDS[@]}"; do
+        st=$(status_of "$id")
+        [ "$st" = FAIL ] || continue
+        sev=${CHECK_SEVERITY[$id]}
+        [ "$sev" = critical ] && crit_fail=$(( crit_fail + 1 ))
+    done
+
+    if [ "$crit_fail" -gt 0 ]; then
+        printf 'Hay %d fallo(s) crítico(s). Actúa sobre ellos antes de cualquier otra mejora.' "$crit_fail"
+    elif [ "${COUNT[FAIL]:-0}" -gt 0 ]; then
+        printf 'No hay fallos críticos, pero hay %d fallo(s) que conviene corregir.' "${COUNT[FAIL]}"
+    elif [ "${COUNT[WARN]:-0}" -gt 0 ]; then
+        printf 'Sin fallos confirmados; hay %d aviso(s) de hardening para revisar.' "${COUNT[WARN]}"
+    else
+        printf 'Sin hallazgos relevantes.'
+    fi
+}
+
 detail_limit() {
     printf '%s' 400
 }

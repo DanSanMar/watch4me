@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.4.0'
+VERSION='0.5.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -33,6 +33,8 @@ LIB_DIR="$SCRIPT_DIR/lib"
 . "$LIB_DIR/render-term.sh"
 # shellcheck source=lib/render-md.sh
 . "$LIB_DIR/render-md.sh"
+# shellcheck source=lib/render-json.sh
+. "$LIB_DIR/render-json.sh"
 
 MODE=''
 PROFILE='full'
@@ -41,6 +43,7 @@ NO_ANIM_FLAG=0
 NO_COLOR_FLAG=0
 USE_SUDO=0
 EXPLAIN_LIST=0
+EXIT_CODE=0
 declare -a EXPLAIN_IDS=()
 PREVIEW_KIND=''
 PREVIEW_ARG=''
@@ -62,8 +65,9 @@ USO
 OPCIONES
   -m, --menu             abre el menú interactivo (requiere fzf)
   --profile quick|full   quick reduce los timeouts de red (por defecto: full)
-  --save [ruta]          guarda el informe Markdown sin preguntar
-                         sin ruta usa reports/; con "-" lo escribe por stdout
+  --save [ruta]          guarda el informe Markdown y el JSON sin preguntar
+                         sin ruta usa reports/; con "-" escribe solo el
+                         Markdown por stdout
   --no-anim              desactiva la cabecera animada
   --no-color             desactiva los colores (también NO_COLOR=1)
   --sudo                 permite lecturas con sudo -n (nunca pide contraseña)
@@ -293,57 +297,103 @@ run_checks() {
     ELAPSED=$(( (now_ms - start_ms) / 1000 ))
 }
 
-resolve_report_path() {
-    local target=$1 ts name dir
-    ts=$(date +%Y%m%d-%H%M)
-    name="watch4me-${HOSTNAME_SHORT}-${ts}.md"
+report_base_name() {
+    local host=${HOSTNAME_SHORT:-localhost}
+    # Guiones y caracteres raros del host pasan a barras bajas.
+    host=${host//-/_}
+    host=${host//[^A-Za-z0-9._]/_}
+    printf 'watch4me_%s_%s' "$host" "$(date '+%d_%m_%Y_%H_%M')"
+}
+
+report_base_taken() {
+    [ -e "${1}.md" ] || [ -e "${1}.json" ]
+}
+
+# Añade segundos y, si hiciera falta, un contador para no sobrescribir
+# nunca un informe anterior (se comprueban .md y .json a la vez).
+unique_report_base() {
+    local base=$1 suffix candidate n=2
+    report_base_taken "$base" || { printf '%s' "$base"; return; }
+    suffix=$(date '+%S')
+    candidate="${base}_${suffix}"
+    while report_base_taken "$candidate"; do
+        candidate="${base}_${suffix}_${n}"
+        n=$(( n + 1 ))
+    done
+    printf '%s' "$candidate"
+}
+
+# Devuelve la base sin extensión: se guardarán <base>.md y <base>.json.
+resolve_report_base() {
+    local target=$1 dir base
+    base=$(report_base_name)
 
     if [ "$target" = 'reports' ]; then
-        mkdir -p "$SCRIPT_DIR/reports" 2>/dev/null || die 'no se pudo crear reports/'
-        printf '%s/reports/%s' "$SCRIPT_DIR" "$name"
+        dir="$SCRIPT_DIR/reports"
+        mkdir -p "$dir" 2>/dev/null || die 'no se pudo crear reports/'
+        unique_report_base "$dir/$base"
         return
     fi
 
     if [ -d "$target" ]; then
-        printf '%s/%s' "${target%/}" "$name"
+        dir="${target%/}"
+        unique_report_base "$dir/$base"
         return
     fi
 
-    dir=$(dirname -- "$target")
+    case "$target" in
+        *.md|*.json) base=${target%.*} ;;
+        *) base=$target ;;
+    esac
+    dir=$(dirname -- "$base")
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir" 2>/dev/null || die "no se pudo crear el directorio $dir"
     fi
-
-    if [ "${target%.md}" = "$target" ]; then
-        target="${target}.md"
-    fi
-    if [ -e "$target" ]; then
-        target="${target%.md}-$(date +%S).md"
-    fi
-    printf '%s' "$target"
+    unique_report_base "$base"
 }
 
 save_report() {
-    local path=$1
-    render_md > "$path" || die "no se pudo escribir $path"
-    printf '\n%sInforme guardado en:%s %s\n' "$C_GREEN_B" "$C_RESET" "$path"
+    local base=$1
+    local md="${base}.md" json="${base}.json"
+    local tmp_md="${md}.tmp.$$" tmp_json="${json}.tmp.$$"
+
+    render_md > "$tmp_md" || {
+        rm -f -- "$tmp_md" "$tmp_json"
+        die "no se pudo escribir $md"
+    }
+    render_json "$base" > "$tmp_json" || {
+        rm -f -- "$tmp_md" "$tmp_json"
+        die "no se pudo escribir $json"
+    }
+    mv -f -- "$tmp_md" "$md" || {
+        rm -f -- "$tmp_md" "$tmp_json"
+        die "no se pudo escribir $md"
+    }
+    mv -f -- "$tmp_json" "$json" || {
+        rm -f -- "$tmp_json"
+        die "no se pudo escribir $json"
+    }
+
+    printf '\n%sInformes guardados:%s\n' "$C_GREEN_B" "$C_RESET"
+    printf '  %sMarkdown:%s %s\n' "$C_DIM" "$C_RESET" "$md"
+    printf '  %sJSON:%s     %s\n' "$C_DIM" "$C_RESET" "$json"
 }
 
 maybe_save() {
-    local path=''
+    local base=''
     if [ -n "$SAVE_TO" ]; then
-        path=$(resolve_report_path "$SAVE_TO")
+        base=$(resolve_report_base "$SAVE_TO")
     elif [ -t 0 ] && [ -t 1 ]; then
-        local suggested="reports/watch4me-${HOSTNAME_SHORT}-$(date +%Y%m%d-%H%M).md"
+        local suggested="reports/$(report_base_name)"
         local ans=''
         printf '\n'
-        read -r -p "¿Guardar informe en ${suggested}? [s/N] " ans || ans=''
+        read -r -p "¿Guardar informes en ${suggested}.md y .json? [s/N] " ans || ans=''
         case "$ans" in
-            s|S|si|sí|Si|Sí|y|Y|yes|YES|Yes) path=$(resolve_report_path reports) ;;
+            s|S|si|sí|Si|Sí|y|Y|yes|YES|Yes) base=$(resolve_report_base reports) ;;
         esac
     fi
 
-    [ -n "$path" ] && save_report "$path"
+    [ -n "$base" ] && save_report "$base"
     return 0
 }
 
@@ -473,10 +523,11 @@ main() {
 
     compute_scores
     render_terminal
+    compute_exit_code
+    EXIT_CODE=$?
     maybe_save
 
-    compute_exit_code
-    return $?
+    return "$EXIT_CODE"
 }
 
 main "$@"

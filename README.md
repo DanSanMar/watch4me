@@ -1,11 +1,11 @@
 # 🛡 watch4me
 
-Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en Markdown. Incluye un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
+Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
 
-Estado actual: **M2.5 / v0.4.0** — 70 checks en 8 dominios, menú fzf con vista previa, resumen ejecutivo con prioridades, guía de actuación y `explain` enriquecido.
+Estado actual: **M2.6 / v0.5.0** — 70 checks en 8 dominios, menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación y `explain` enriquecido.
 
 ```text
---- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.4.0 ---
+--- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.5.0 ---
  perfil: full · host: arch-cosmic · distro: arch · root: no
 ```
 
@@ -27,9 +27,9 @@ chmod +x watch4me.sh
 ./watch4me.sh audit                    # auditoría completa sin menú
 ./watch4me.sh audit --profile quick    # escaneos rápidos (< 10 s)
 ./watch4me.sh audit --sudo             # permite lecturas con sudo -n
-./watch4me.sh audit --save             # guarda el .md en reports/
+./watch4me.sh audit --save             # guarda .md y .json en reports/
 ./watch4me.sh audit --save - > informe.md   # Markdown por stdout
-./watch4me.sh audit --save /ruta/informe.md # ruta concreta
+./watch4me.sh audit --save /ruta/informe     # ruta concreta (genera .md y .json)
 ./watch4me.sh explain NET-01           # detalle y remedio de un check
 ./watch4me.sh explain NET-01 SVC-07    # varios checks a la vez
 ./watch4me.sh explain --list           # catálogo agrupado por dominio
@@ -38,7 +38,7 @@ chmod +x watch4me.sh
 Al terminar, si hay terminal interactiva, pregunta:
 
 ```text
-¿Guardar informe en reports/watch4me-arch-cosmic-20261023-1748.md? [s/N]
+¿Guardar informes en reports/watch4me_arch_cosmic_24_10_2026_17_48.md y .json? [s/N]
 ```
 
 Sin terminal (cron, pipe) no pregunta: solo guarda con `--save`.
@@ -53,10 +53,10 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 | Auditoría rápida | Perfil `quick`, timeouts de 5-8 s, omite INT-02 |
 | Auditoría con sudo | Lecturas con `sudo -n`; nunca pide contraseña |
 | Auditoría rápida con sudo | Perfil `quick` + lecturas privilegiadas |
-| Auditar y guardar informe | Escribe el Markdown en `reports/` |
+| Auditar y guardar informe | Escribe el `.md` y el `.json` en `reports/` |
 | Explicar un check | Buscador por ID, título o dominio con ficha y remedio |
 | Catálogo de checks | Los 70 checks agrupados por dominio |
-| Informes guardados | Lista y abre los `.md` de `reports/` |
+| Informes guardados | Lista y abre los `.md` y `.json` de `reports/` |
 | Ayuda y atajos | Comandos directos: `--save`, `--profile`, `explain`… |
 
 Teclas: escribe para filtrar, `ENTER` ejecuta, `ESC` vuelve o sale. El logo de la cabecera va cambiando de color cada 3 segundos con la misma paleta de `dash4me` mientras el menú está abierto, e incluye fecha, hora y host cuando el ancho de la terminal lo permite; en terminales estrechas cambia el subtítulo por la hora y la fecha. Al salir con `ESC`, `Ctrl-C` o la acción «Salir» se muestra un mensaje de despedida con los atajos directos.
@@ -73,7 +73,7 @@ WATCH4ME_NO_INSTALL=1 ./watch4me.sh menu
 |---|---|
 | `menu`, `-m`, `--menu` | abre el menú interactivo (requiere `fzf`) |
 | `--profile quick\|full` | `quick` usa timeouts de 5-8 s, omite INT-02 y puede omitir escaneos que no terminen a tiempo |
-| `--save [ruta]` | guarda sin preguntar; sin ruta usa `reports/`; `-` = stdout |
+| `--save [ruta]` | guarda `.md` y `.json` sin preguntar; sin ruta usa `reports/`; `-` = solo Markdown por stdout |
 | `--no-anim` | cabecera estática; el progreso sigue visible en terminal |
 | `--no-color` | sin colores (también `NO_COLOR=1`) |
 | `--sudo` | usa `sudo -n` para lecturas que requieren root; nunca pide contraseña |
@@ -101,7 +101,20 @@ El informe de terminal es deliberadamente resumido:
 4. **Por dominio**, una tabla compacta de correctos/fallos/avisos/omitidos.
 5. **Cómo leer y actuar**: prioridad, contexto y valoración del peligro.
 
-El informe Markdown conserva el detalle completo, la evidencia y los remedios de cada check. `--save -` emite solo ese Markdown.
+El informe Markdown conserva el detalle completo, la evidencia y los remedios de cada check. El informe JSON contiene los mismos datos en un esquema estable (`watch4me.report/v1`), pensado para análisis automático con IA o scripts. `--save -` emite solo el Markdown por stdout.
+
+### Informes guardados
+
+Cada auditoría guardada crea **dos ficheros con la misma base**:
+
+```text
+reports/watch4me_arch_cosmic_24_10_2026_17_48.md
+reports/watch4me_arch_cosmic_24_10_2026_17_48.json
+```
+
+El nombre usa barras bajas y la fecha en orden día, mes y año. Si ya existe un informe de ese minuto, se añaden los segundos (y un contador si hiciera falta) comprobando siempre `.md` y `.json`: **nunca se sobrescribe** un informe anterior.
+
+El JSON incluye metadatos de la herramienta y del equipo, fecha ISO 8601, perfil, uso de `root`/`sudo`, duración, código de salida, score global, contadores, una entrada por dominio y un array `checks` con `id`, severidad, estado, descripción, detalle, evidencia y remedio sugerido. Está formateado y es válido sin necesidad de `jq` ni `python`.
 
 ## Catálogo de checks (70)
 
@@ -274,6 +287,7 @@ lib/family/*.sh          adaptadores por distribución
 lib/checks.sh            registro, estado y scoring
 lib/render-term.sh       salida en pantalla
 lib/render-md.sh         informe Markdown
+lib/render-json.sh       informe JSON estructurado
 checks/*.sh              70 checks en 8 dominios
 reports/                 informes generados
 state/                   estado interno (futuro baseline)
@@ -284,6 +298,7 @@ state/                   estado interno (futuro baseline)
 - **M1** ✅ CLI, cabecera animada, 12 checks, informes y licencia
 - **M2** ✅ catálogo de 70 checks, scoring por dominio, `explain --list` / múltiples IDs y pulido de salida (v0.3.0)
 - **M2.5** ✅ menú interactivo con fzf, vista previa por acción y ayuda de atajos (v0.4.0)
+- **M2.6** ✅ informes Markdown + JSON, nombres sin guiones y sin sobrescrituras (v0.5.0)
 - **M3** baseline + `monitor` con notificación de sistema (`notify-send` / journal) y timer de usuario
 - **M4** documentación, tests y `shellcheck` limpio
 

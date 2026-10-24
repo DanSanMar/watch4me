@@ -1,4 +1,5 @@
 reports/*.md
+reports/*.json
 state/tmp/
 state/*
 !state/.gitkeep

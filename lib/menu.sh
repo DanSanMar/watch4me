@@ -366,10 +366,10 @@ menu_rows_main() {
     menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Auditoría rápida${C_RESET} ${C_DIM}${sep}${C_RESET} timeouts reducidos ${sep} revisión en segundos" "audit-quick"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Auditoría con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más lecturas con sudo -n ${sep} sin pedir contraseña" "audit-sudo"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔐' '[q]')${C_RESET} ${C_BOLD}Auditoría rápida con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} lo mejor de ambos perfiles" "audit-quick-sudo"
-    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '💾' '[w]')${C_RESET} ${C_BOLD}Auditar y guardar informe${C_RESET} ${C_DIM}${sep}${C_RESET} escribe el Markdown en reports/" "audit-save"
+    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '💾' '[w]')${C_RESET} ${C_BOLD}Auditar y guardar informe${C_RESET} ${C_DIM}${sep}${C_RESET} escribe .md y .json en reports/" "audit-save"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔎' '[?]')${C_RESET} ${C_BOLD}Explicar un check${C_RESET} ${C_DIM}${sep}${C_RESET} busca por ID, título o dominio" "explain-pick"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '📚' '[c]')${C_RESET} ${C_BOLD}Catálogo de checks${C_RESET} ${C_DIM}${sep}${C_RESET} los ${#CHECK_IDS[@]} checks agrupados por dominio" "explain-list"
-    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '📄' '[r]')${C_RESET} ${C_BOLD}Informes guardados${C_RESET} ${C_DIM}${sep}${C_RESET} consulta los .md de reports/" "reports"
+    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '📄' '[r]')${C_RESET} ${C_BOLD}Informes guardados${C_RESET} ${C_DIM}${sep}${C_RESET} consulta los .md y .json de reports/" "reports"
     menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '❓' '[h]')${C_RESET} ${C_BOLD}Ayuda y atajos${C_RESET} ${C_DIM}${sep}${C_RESET} comandos directos: --save, --profile, explain..." "help"
     menu_row "${C_BOLD}${C_RED_B}$(ui_icon '⏻' '[x]')${C_RESET} ${C_BOLD}Salir${C_RESET} ${C_DIM}${sep}${C_RESET} cerrar el menú sin ejecutar nada" "quit"
 }
@@ -397,6 +397,8 @@ menu_run_audit() {
     run_checks
     compute_scores
     render_terminal
+    compute_exit_code
+    EXIT_CODE=$?
     maybe_save
 
     if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
@@ -456,13 +458,20 @@ menu_show_catalog() {
 }
 
 menu_reports() {
-    local -a files=()
-    local f sel rc path display size stamp sep
+    local -a files=() candidates=()
+    local f sel rc path display size stamp sep kind old_nullglob
     sep=$(menu_sep)
 
-    while IFS= read -r f; do
-        [ -f "$f" ] && files+=("$f")
-    done < <(printf '%s\n' "$SCRIPT_DIR"/reports/*.md 2>/dev/null | sort -r)
+    # Markdown y JSON de cada auditoría, siempre del más reciente al más antiguo.
+    old_nullglob=$(shopt -p nullglob 2>/dev/null || true)
+    shopt -s nullglob
+    candidates=("$SCRIPT_DIR"/reports/*.md "$SCRIPT_DIR"/reports/*.json)
+    eval "${old_nullglob:-shopt -u nullglob}"
+    if [ "${#candidates[@]}" -gt 0 ]; then
+        while IFS= read -r f; do
+            [ -f "$f" ] && files+=("$f")
+        done < <(ls -1t -- "${candidates[@]}" 2>/dev/null)
+    fi
 
     if [ "${#files[@]}" -eq 0 ]; then
         menu_clear
@@ -477,7 +486,11 @@ menu_reports() {
     for f in "${files[@]}"; do
         size=$(du -h -- "$f" 2>/dev/null | cut -f1)
         stamp=$(date -r "$f" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '')
-        display="${C_BOLD}$(basename -- "$f")${C_RESET} ${C_DIM}${sep}${C_RESET} ${stamp:-sin fecha} ${C_DIM}${sep}${C_RESET} ${size:-?}"
+        case "$f" in
+            *.json) kind='JSON' ;;
+            *)      kind='MD' ;;
+        esac
+        display="${C_BOLD}$(basename -- "$f")${C_RESET} ${C_DIM}${sep}${C_RESET} ${C_CYAN}${kind}${C_RESET} ${C_DIM}${sep}${C_RESET} ${stamp:-sin fecha} ${C_DIM}${sep}${C_RESET} ${size:-?}"
         rows+=("${display}"$'\t'"${f}")
     done
 
@@ -510,7 +523,7 @@ menu_rows_help() {
     menu_row "${C_BOLD}./watch4me.sh audit${C_RESET} ${C_DIM}${sep}${C_RESET} fuerza la auditoría completa sin menú" "audit"
     menu_row "${C_BOLD}./watch4me.sh audit --profile quick${C_RESET} ${C_DIM}${sep}${C_RESET} perfil rápido de 5-8 s" "quick"
     menu_row "${C_BOLD}./watch4me.sh audit --sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más lecturas con sudo -n, sin contraseña" "sudo"
-    menu_row "${C_BOLD}./watch4me.sh audit --save${C_RESET} ${C_DIM}${sep}${C_RESET} guarda el informe en reports/" "save"
+    menu_row "${C_BOLD}./watch4me.sh audit --save${C_RESET} ${C_DIM}${sep}${C_RESET} guarda .md y .json en reports/" "save"
     menu_row "${C_BOLD}./watch4me.sh audit --save - > informe.md${C_RESET} ${C_DIM}${sep}${C_RESET} Markdown limpio por stdout" "save-stdout"
     menu_row "${C_BOLD}./watch4me.sh audit --save /ruta/informe.md${C_RESET} ${C_DIM}${sep}${C_RESET} ruta concreta para el informe" "save-path"
     menu_row "${C_BOLD}./watch4me.sh explain NET-01${C_RESET} ${C_DIM}${sep}${C_RESET} ficha, descripción y remedio de un check" "explain"
@@ -589,7 +602,7 @@ menu_pv_action() {
             menu_pv_text 'escaneos de red de hasta 30 s y verificación de paquetes.'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_text 'Al terminar ofrece guardar el informe en reports/.'
+            menu_pv_text 'Al terminar ofrece guardar el informe .md y .json en reports/.'
             menu_pv_label 'EQUIVALENTE EN CLI'
             menu_pv_cmd './watch4me.sh audit'
             menu_pv_label 'TIEMPO'
@@ -633,10 +646,11 @@ menu_pv_action() {
             ;;
         audit-save)
             menu_pv_title 'AUDITAR Y GUARDAR'
-            menu_pv_text 'Ejecuta la auditoría completa y guarda el informe Markdown'
+            menu_pv_text 'Ejecuta la auditoría completa y guarda el informe Markdown y JSON'
             menu_pv_text 'sin preguntar.'
             menu_pv_label 'DÓNDE'
-            menu_pv_text 'reports/watch4me-<host>-AAAAMMDD-HHMM.md'
+            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.md'
+            menu_pv_text 'y su pareja .json con los mismos datos estructurados.'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura del sistema. El único fichero escrito es el informe.'
             menu_pv_label 'EQUIVALENTE EN CLI'
@@ -663,9 +677,9 @@ menu_pv_action() {
             ;;
         reports)
             menu_pv_title 'INFORMES GUARDADOS'
-            menu_pv_text 'Lista los informes .md de reports/ ordenados por fecha.'
+            menu_pv_text 'Lista los .md y .json de reports/ del más reciente al más antiguo.'
             menu_pv_label 'CÓMO'
-            menu_pv_text 'El panel derecho muestra una vista previa del Markdown.'
+            menu_pv_text 'El panel derecho muestra una vista previa del Markdown o del JSON.'
             menu_pv_text 'ENTER lo abre en less (o en cat si no está disponible).'
             menu_pv_label 'SI ESTÁ VACÍO'
             menu_pv_text 'Ejecuta antes «Auditar y guardar informe».'
@@ -723,7 +737,10 @@ menu_pv_report() {
         menu_pv_text "No se puede leer el informe: $f"
         return 0
     fi
-    menu_pv_title 'INFORME MARKDOWN'
+    case "$f" in
+        *.json) menu_pv_title 'INFORME JSON' ;;
+        *)      menu_pv_title 'INFORME MARKDOWN' ;;
+    esac
     printf '%s%s%s\n\n' "$PV_D" "$f" "$PV_R"
     sed -n '1,400p' -- "$f"
 }
@@ -771,7 +788,7 @@ menu_pv_help() {
             menu_pv_label 'COMANDO'
             menu_pv_cmd './watch4me.sh audit --save'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Ejecuta la auditoría y escribe el .md en reports/ sin preguntar.'
+            menu_pv_text 'Ejecuta la auditoría y escribe el .md y el .json en reports/.'
             ;;
         save-stdout)
             menu_pv_title 'MARKDOWN POR STDOUT'
@@ -786,8 +803,8 @@ menu_pv_help() {
             menu_pv_label 'COMANDO'
             menu_pv_cmd './watch4me.sh audit --save /ruta/informe.md'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Guarda el informe en la ruta indicada. Si es un directorio,'
-            menu_pv_text 'genera el nombre con host y fecha.'
+            menu_pv_text 'Guarda .md y .json en la ruta indicada (con o sin extensión).'
+            menu_pv_text 'Si es un directorio, genera el nombre con host y fecha.'
             ;;
         explain)
             menu_pv_title 'FICHA DE UN CHECK'
