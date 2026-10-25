@@ -552,3 +552,133 @@ check_sys_12() {
             ;;
     esac
 }
+
+register_check \
+    'SYS-13' medium 'Cifrado del disco del sistema' check_sys_13 \
+    'Sin cifrado, quien acceda físicamente al disco (robo, pérdida o retirada del equipo) puede leer todos los datos sin necesidad de credenciales. Es clave en portátiles y equipos de casa.' \
+    $'Cifra el disco durante la instalación o, si ya está instalado, valora LUKS con una copia de seguridad previa:\n  sudo cryptsetup luksFormat /dev/sdXN\n  sudo cryptsetup open /dev/sdXN root\n  sudo mkfs.ext4 /dev/mapper/root\nEn escritorios también puedes usar el cifrado de disco que ofrece el instalador de tu distribución.'
+
+check_sys_13() {
+    local id=$CURRENT_ID
+    if [ -f /.dockerenv ]; then
+        emit "$id" INFO 'contenedor detectado: el cifrado lo gestiona el host'
+        return
+    fi
+    if ! have findmnt; then
+        emit "$id" SKIP 'findmnt no disponible'
+        return
+    fi
+
+    local src dev
+    src=$(findmnt -no SOURCE / 2>/dev/null)
+    if [ -z "$src" ]; then
+        emit "$id" SKIP 'no se pudo identificar el dispositivo raíz'
+        return
+    fi
+    case "$src" in
+        overlay|tmpfs|none|ramfs|rootfs)
+            emit "$id" INFO "sistema de ficheros especial ($src): no aplica el cifrado de disco"
+            return
+            ;;
+        *:*)
+            emit "$id" INFO "el sistema raíz es remoto ($src): el cifrado corresponde al servidor"
+            return
+            ;;
+    esac
+
+    if ! have lsblk; then
+        emit "$id" SKIP 'lsblk no disponible'
+        return
+    fi
+
+    # findmnt puede devolver /dev/nvme0n1p2[/@] para un subvolumen btrfs.
+    dev=${src%%[*}
+    local chain
+    chain=$(lsblk -s -no NAME,TYPE,FSTYPE -- "$dev" 2>/dev/null)
+    if [ -z "$chain" ]; then
+        emit "$id" SKIP "no se pudo analizar el dispositivo raíz ($dev)"
+        return
+    fi
+
+    ev "$(printf '%s\n' "$chain" | oneline)"
+    if printf '%s\n' "$chain" | grep -qiE '(^|[[:space:]])crypt([[:space:]]|$)|crypt_LUKS|dm-crypt'; then
+        emit "$id" PASS "el sistema raíz ($dev) está sobre un dispositivo cifrado"
+    else
+        emit "$id" WARN "el sistema raíz ($dev) no parece cifrado: un acceso físico permite leer los datos"
+    fi
+}
+
+register_check \
+    'SYS-14' medium 'Bloqueo automático de pantalla' check_sys_14 \
+    'Una sesión desatendida y sin bloqueo deja el escritorio, el correo y los datos abiertos a cualquiera que pase por delante. El bloqueo por inactividad es la medida mínima en un cliente o PC doméstico.' \
+    $'Activa el bloqueo automático en tu escritorio:\n  GNOME:   Configuración → Privacidad → Bloqueo de pantalla\n  KDE:     Configuración → Seguridad → Bloqueo de pantalla\n  XFCE:    Configuración → Ahorro de energía → Bloquear pantalla\nTambién puedes usar: gsettings set org.gnome.desktop.screensaver lock-enabled true'
+
+check_sys_14() {
+    local id=$CURRENT_ID
+    if [ -f /.dockerenv ]; then
+        emit "$id" INFO 'contenedor detectado: no hay escritorio que bloquear'
+        return
+    fi
+
+    local found=0 issues='' schema val idle secs
+    if have gsettings; then
+        for schema in org.gnome.desktop.screensaver org.cinnamon.desktop.screensaver org.mate.screensaver; do
+            val=$(gsettings get "$schema" lock-enabled 2>/dev/null) || continue
+            [ -n "$val" ] || continue
+            found=1
+
+            idle=''
+            case "$schema" in
+                org.gnome.desktop.screensaver)
+                    idle=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null) ;;
+                org.cinnamon.desktop.screensaver)
+                    idle=$(gsettings get org.cinnamon.desktop.session idle-delay 2>/dev/null) ;;
+                org.mate.screensaver)
+                    idle=$(gsettings get org.mate.session idle-delay 2>/dev/null) ;;
+            esac
+            secs=''
+            [[ "$idle" =~ ([0-9]+) ]] && secs=${BASH_REMATCH[1]}
+            ev "$schema: lock-enabled=$val idle-delay=${idle:-?}"
+
+            if [ "$val" != 'true' ]; then
+                issues+="$schema: bloqueo desactivado · "
+            elif [ -n "$secs" ] && [ "$secs" -eq 0 ]; then
+                issues+="$schema: sin tiempo de inactividad · "
+            fi
+            break
+        done
+    fi
+
+    # KDE guarda la configuración en kscreenlockerrc.
+    if [ "$found" -eq 0 ]; then
+        local kread='' autolock='' timeout=''
+        if have kreadconfig6; then
+            kread=kreadconfig6
+        elif have kreadconfig5; then
+            kread=kreadconfig5
+        fi
+        if [ -n "$kread" ]; then
+            autolock=$($kread --file kscreenlockerrc --group Daemon --key Autolock 2>/dev/null)
+            timeout=$($kread --file kscreenlockerrc --group Daemon --key Timeout 2>/dev/null)
+            if [ -n "$autolock" ] || [ -n "$timeout" ]; then
+                found=1
+                ev "KDE: Autolock=${autolock:-?} Timeout=${timeout:-?}"
+                [ "${autolock,,}" = 'false' ] && issues+='KDE: Autolock=false · '
+                if [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -eq 0 ]; then
+                    issues+='KDE: Timeout=0 · '
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        emit "$id" SKIP 'no se detectó un escritorio con bloqueo de pantalla consultable'
+        return
+    fi
+
+    if [ -n "$issues" ]; then
+        emit "$id" WARN "bloqueo automático desactivado o sin tiempo: ${issues% · }"
+    else
+        emit "$id" PASS 'el bloqueo automático de pantalla está activado'
+    fi
+}

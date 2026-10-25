@@ -54,7 +54,9 @@ _md_section() {
 
 _md_summary() {
     local crit_fail=0 high_fail=0 mid_fail=0 id st sev
-    for id in "${CHECK_IDS[@]}"; do
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
+    for id in "${ids[@]}"; do
         st=$(status_of "$id")
         [ "$st" = FAIL ] || continue
         sev=${CHECK_SEVERITY[$id]}
@@ -75,15 +77,39 @@ _md_summary() {
     printf '**Veredicto:** %s\n\n' "$(audit_verdict_text)"
 }
 
+_md_scope() {
+    local id n total
+    n=${#ACTIVE_CHECK_IDS[@]}
+    [ "$n" -gt 0 ] || n=${#CHECK_IDS[@]}
+    total=${#CHECK_IDS[@]}
+
+    printf '## Alcance del perfil\n\n'
+    printf 'Se ejecutaron **%d de %d** checks del perfil **%s** (`%s`).\n\n' \
+        "$n" "$total" "${PROFILE_LABEL:-General}" "${PROFILE:-general}"
+    [ -n "${PROFILE_DESC:-}" ] && printf '%s\n\n' "$PROFILE_DESC"
+
+    if [ "${#PROFILE_EXCLUDED_IDS[@]}" -gt 0 ]; then
+        printf '**Checks excluidos (%d):**' "${#PROFILE_EXCLUDED_IDS[@]}"
+        for id in "${PROFILE_EXCLUDED_IDS[@]}"; do
+            printf ' `%s`' "$id"
+        done
+        printf '\n\n'
+    else
+        printf 'No se excluyó ningún check del catálogo.\n\n'
+    fi
+}
+
 _md_priorities() {
     local sev st id detail n=0
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
     printf '## Prioridades\n\n'
     printf '| Estado | Severidad | Check | Qué ocurre |\n'
     printf '|---|---|---|---|\n'
 
     for sev in critical high medium low; do
         for st in FAIL WARN; do
-            for id in "${CHECK_IDS[@]}"; do
+            for id in "${ids[@]}"; do
                 [ "${CHECK_SEVERITY[$id]}" = "$sev" ] || continue
                 [ "$(status_of "$id")" = "$st" ] || continue
                 n=$(( n + 1 ))
@@ -115,7 +141,9 @@ _md_guide() {
     printf '2. Revisa el contexto de cada hallazgo antes de aplicar el remedio: exposición a Internet, usuarios, datos y servicios afectados.\n'
     printf '3. Consulta el detalle y los comandos sugeridos con `./watch4me.sh explain <ID>`.\n'
     printf '4. Aplica un cambio cada vez, en una ventana de mantenimiento, y vuelve a ejecutar la auditoría.\n'
-    printf '5. Guarda el informe con `--save` para comparar el antes y el después.\n\n'
+    printf '5. Si el equipo tiene un uso claro, repite con `--profile servidor`, `cliente` o `domestico`; el vistazo `esencial` es solo una primera mirada.\n'
+    printf '6. Para vigilar conexiones y servicios en tiempo real, usa `./watch4me.sh watch` (solo lectura).\n'
+    printf '7. Guarda el informe con `--save` para comparar el antes y el después.\n\n'
     printf 'Un aviso puede ser una decisión deliberada de tu configuración. Confirma que encaja con tu uso antes de cambiarlo. watch4me no modifica el sistema: todos los comandos son sugerencias.\n\n'
 }
 
@@ -131,19 +159,24 @@ render_md() {
     printf -- '- **Distribución:** %s (%s)\n' "${DISTRO_NAME:-desconocida}" "${DISTRO_FAMILY:-unknown}"
     printf -- '- **Kernel:** %s\n' "$kernel"
     printf -- '- **Fecha:** %s\n' "$now"
-    printf -- '- **Perfil:** %s · **root:** %s\n' "${PROFILE:-full}" "$root_txt"
+    printf -- '- **Perfil:** %s (`%s`) · **Checks:** %d de %d · **root:** %s\n' \
+        "${PROFILE_LABEL:-General}" "${PROFILE:-general}" \
+        "${#ACTIVE_CHECK_IDS[@]}" "${#CHECK_IDS[@]}" "$root_txt"
     printf -- '- **Score global:** %d/100 (%s)\n' "$GLOBAL_SCORE" "$(score_verdict "$GLOBAL_SCORE")"
     printf -- '- **Resultado:** %d correctos · %d fallos · %d avisos · %d omitidos · %d informativos\n\n' \
         "${COUNT[PASS]}" "${COUNT[FAIL]}" "${COUNT[WARN]}" "${COUNT[SKIP]}" "${COUNT[INFO]}"
 
     _md_summary
+    _md_scope
     _md_priorities
 
     printf '## Detalle completo\n\n'
 
     local id st sev
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
     local -a crit=() high=() mid=() warn=() info=() skip=() pass=()
-    for id in "${CHECK_IDS[@]}"; do
+    for id in "${ids[@]}"; do
         st=$(status_of "$id")
         sev=${CHECK_SEVERITY[$id]}
         case "$st" in
@@ -184,5 +217,5 @@ render_md() {
 
     printf -- '---\n\n'
     printf 'Generado por watch4me v%s · licencia GPLv3 · la cabecera animada deriva de [dash4me](https://github.com/DanSanMar/dash4me)\n' \
-        "${VERSION:-0.5.0}"
+        "${VERSION:-0.6.0}"
 }

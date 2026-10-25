@@ -11,6 +11,7 @@ MENU_TAB=$'\t'
 MENU_LOGO_PID=''
 MENU_LOGO_TICKS=${MENU_LOGO_TICKS:-15}   # 15 x 0,2 s = cambio de color cada 3 s
 MENU_EXIT_SHOWN=0
+MENU_SUDO=0
 
 # ---------------------------------------------------------------------------
 # Logo animado del menú
@@ -171,20 +172,23 @@ menu_header() {
         # Muy estrecho: solo el contador para no robar líneas a fzf.
         printf ' %s%d checks%s\n' "$C_DIM" "${#CHECK_IDS[@]}" "$C_RESET"
     fi
-    if [ "${UI_WIDTH:-0}" -ge 62 ]; then
-        printf ' %sCompleta = más fiable%s %s %sRápida = menos tiempo%s\n' \
+    if [ "${UI_WIDTH:-0}" -ge 78 ]; then
+        printf ' %sGeneral = completa%s %s %sServidor/Cliente/PC = enfoque%s\n' \
             "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
             "$C_BOLD$C_YELLOW_B" "$C_RESET"
-        printf ' %s+sudo = más datos%s %s %snunca pide contraseña%s\n\n' \
+        printf ' %sEsencial = rápido%s %s %s+sudo = más datos%s %s %swatch = vigilancia%s\n\n' \
+            "$C_BOLD$C_YELLOW_B" "$C_RESET" "$sep" \
             "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
-            "$C_DIM" "$C_RESET"
-    elif [ "${UI_WIDTH:-0}" -ge 40 ]; then
-        printf ' %sCompleta%s %s %sRápida%s %s %s+sudo%s\n\n' \
+            "$C_BOLD$C_GREEN_B" "$C_RESET"
+    elif [ "${UI_WIDTH:-0}" -ge 52 ]; then
+        printf ' %sGeneral = completa%s %s %sServidor/Cliente/PC%s %s %s+sudo%s\n\n' \
             "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
             "$C_BOLD$C_YELLOW_B" "$C_RESET" "$sep" \
             "$C_BOLD$C_CYAN_B" "$C_RESET"
     else
-        printf ' %sMenú%s\n\n' "$C_BOLD$C_CYAN_B" "$C_RESET"
+        printf ' %sPerfiles%s %s %s+sudo%s\n\n' \
+            "$C_BOLD$C_CYAN_B" "$C_RESET" "$sep" \
+            "$C_BOLD$C_CYAN_B" "$C_RESET"
     fi
     menu_logo_start
 }
@@ -363,13 +367,21 @@ menu_ensure_fzf() {
 # ---------------------------------------------------------------------------
 
 menu_rows_main() {
-    local sep
+    local sep sudo_state
     sep=$(menu_sep)
-    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '▶' '>')${C_RESET} ${C_BOLD}Auditoría completa${C_RESET} ${C_DIM}${sep}${C_RESET} recomendada ${sep} ${#CHECK_IDS[@]} checks" "audit-full"
-    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Auditoría rápida${C_RESET} ${C_DIM}${sep}${C_RESET} menos tiempo ${sep} puede omitir checks" "audit-quick"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Completa con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más datos ${sep} no pide contraseña" "audit-sudo"
-    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔐' '[q]')${C_RESET} ${C_BOLD}Rápida con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} rápida ${sep} más datos" "audit-quick-sudo"
-    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '💾' '[w]')${C_RESET} ${C_BOLD}Guardar informe${C_RESET} ${C_DIM}${sep}${C_RESET} completa ${sep} .md y .json" "audit-save"
+    if [ "${MENU_SUDO:-0}" -eq 1 ]; then
+        sudo_state='[x] activado'
+    else
+        sudo_state='[ ] desactivado'
+    fi
+
+    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '▶' '>')${C_RESET} ${C_BOLD}Auditoría general${C_RESET} ${C_DIM}${sep}${C_RESET} recomendada ${sep} $(profile_count general) checks" "audit-general"
+    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '🖥' '[S]')${C_RESET} ${C_BOLD}Servidor${C_RESET} ${C_DIM}${sep}${C_RESET} SSH, servicios e integridad ${sep} $(profile_count servidor) checks" "audit-servidor"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '💻' '[C]')${C_RESET} ${C_BOLD}Cliente${C_RESET} ${C_DIM}${sep}${C_RESET} escritorio, Wi-Fi y cifrado ${sep} $(profile_count cliente) checks" "audit-cliente"
+    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '🏠' '[D]')${C_RESET} ${C_BOLD}PC doméstico${C_RESET} ${C_DIM}${sep}${C_RESET} lo importante de casa ${sep} $(profile_count domestico) checks" "audit-domestico"
+    menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Vistazo esencial${C_RESET} ${C_DIM}${sep}${C_RESET} rápido ${sep} $(profile_count esencial) checks" "audit-esencial"
+    menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Lecturas con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} ${sudo_state} ${sep} no pide contraseña" "toggle-sudo"
+    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '👁' '[w]')${C_RESET} ${C_BOLD}Vigilancia en vivo${C_RESET} ${C_DIM}${sep}${C_RESET} conexiones, servicios y persistencia" "watch"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔎' '[?]')${C_RESET} ${C_BOLD}Explicar un check${C_RESET} ${C_DIM}${sep}${C_RESET} detalle y remedio" "explain-pick"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '📚' '[c]')${C_RESET} ${C_BOLD}Catálogo de checks${C_RESET} ${C_DIM}${sep}${C_RESET} los ${#CHECK_IDS[@]} por dominio" "explain-list"
     menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '📄' '[r]')${C_RESET} ${C_BOLD}Informes guardados${C_RESET} ${C_DIM}${sep}${C_RESET} consulta .md y .json" "reports"
@@ -382,13 +394,13 @@ menu_rows_main() {
 # ---------------------------------------------------------------------------
 
 menu_run_audit() {
-    local profile=$1 use_sudo=$2 save=$3 anim_save=$UI_ANIM
+    local profile=$1 anim_save=$UI_ANIM
 
-    PROFILE=$profile
-    USE_SUDO=$use_sudo
+    profile_set "$profile" || return $?
+    USE_SUDO=${MENU_SUDO:-0}
     SUDO_CHECKED=0
     SUDO_OK=0
-    SAVE_TO=$save
+    SAVE_TO=''
 
     if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
         rm -rf -- "$RUN_DIR"
@@ -413,6 +425,27 @@ menu_run_audit() {
 
     menu_pause
     return 0
+}
+
+menu_watch() {
+    local rc anim_save=$UI_ANIM
+
+    USE_SUDO=${MENU_SUDO:-0}
+    SUDO_CHECKED=0
+    SUDO_OK=0
+    WATCH_ONCE=0
+    menu_clear
+    watch_main
+    rc=$?
+
+    if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
+        rm -rf -- "$RUN_DIR"
+    fi
+    RUN_DIR=''
+    UI_ANIM=$anim_save
+
+    menu_pause
+    return "$rc"
 }
 
 menu_rows_checks() {
@@ -479,7 +512,8 @@ menu_reports() {
     if [ "${#files[@]}" -eq 0 ]; then
         menu_clear
         printf '%sNo hay informes en reports/%s\n\n' "$C_YELLOW_B" "$C_RESET"
-        printf 'Ejecuta "Auditar y guardar informe" o usa:\n'
+        printf 'Ejecuta una auditoría y responde «s» cuando ofrezca guardar.\n'
+        printf 'También puedes usar:\n'
         printf '  %s./watch4me.sh audit --save%s\n' "$C_BOLD" "$C_RESET"
         menu_pause
         return 0
@@ -523,17 +557,19 @@ menu_rows_help() {
     local sep
     sep=$(menu_sep)
     menu_row "${C_BOLD}./watch4me.sh${C_RESET} ${C_DIM}${sep}${C_RESET} menú en terminal y auditoría cuando no hay TTY" "basic"
-    menu_row "${C_BOLD}./watch4me.sh audit${C_RESET} ${C_DIM}${sep}${C_RESET} fuerza la auditoría completa sin menú" "audit"
-    menu_row "${C_BOLD}./watch4me.sh audit --profile quick${C_RESET} ${C_DIM}${sep}${C_RESET} perfil rápido de 5-8 s" "quick"
+    menu_row "${C_BOLD}./watch4me.sh audit${C_RESET} ${C_DIM}${sep}${C_RESET} auditoría general (${#CHECK_IDS[@]} checks) sin menú" "audit"
+    menu_row "${C_BOLD}./watch4me.sh audit --profile <perfil>${C_RESET} ${C_DIM}${sep}${C_RESET} servidor, cliente, doméstico o esencial" "profiles"
+    menu_row "${C_BOLD}./watch4me.sh watch${C_RESET} ${C_DIM}${sep}${C_RESET} vigilancia en vivo de conexiones y servicios" "watch"
+    menu_row "${C_BOLD}./watch4me.sh watch --once${C_RESET} ${C_DIM}${sep}${C_RESET} una sola captura, útil en scripts o cron" "watch-once"
     menu_row "${C_BOLD}./watch4me.sh audit --sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más lecturas con sudo -n, sin contraseña" "sudo"
     menu_row "${C_BOLD}./watch4me.sh audit --save${C_RESET} ${C_DIM}${sep}${C_RESET} guarda .md y .json en reports/" "save"
     menu_row "${C_BOLD}./watch4me.sh audit --save - > informe.md${C_RESET} ${C_DIM}${sep}${C_RESET} Markdown limpio por stdout" "save-stdout"
     menu_row "${C_BOLD}./watch4me.sh audit --save /ruta/informe.md${C_RESET} ${C_DIM}${sep}${C_RESET} ruta concreta para el informe" "save-path"
-    menu_row "${C_BOLD}./watch4me.sh explain NET-01${C_RESET} ${C_DIM}${sep}${C_RESET} ficha, descripción y remedio de un check" "explain"
-    menu_row "${C_BOLD}./watch4me.sh explain --list${C_RESET} ${C_DIM}${sep}${C_RESET} catálogo agrupado por dominio" "list"
+    menu_row "${C_BOLD}./watch4me.sh explain NET-01${C_RESET} ${C_DIM}${sep}${C_RESET} ficha, descripción, perfiles y remedio" "explain"
+    menu_row "${C_BOLD}./watch4me.sh explain --list${C_RESET} ${C_DIM}${sep}${C_RESET} catálogo agrupado por dominio y perfil" "list"
     menu_row "${C_BOLD}./watch4me.sh --help${C_RESET} ${C_DIM}${sep}${C_RESET} ayuda completa de la CLI" "cli"
     menu_row "${C_BOLD}./watch4me.sh menu${C_RESET} ${C_DIM}${sep}${C_RESET} abre este menú de forma explícita" "menu"
-    menu_row "${C_BOLD}./watch4me.sh audit --profile quick --sudo --save${C_RESET} ${C_DIM}${sep}${C_RESET} combinar opciones" "combo"
+    menu_row "${C_BOLD}./watch4me.sh audit --profile cliente --sudo --save${C_RESET} ${C_DIM}${sep}${C_RESET} combinar opciones" "combo"
     menu_row "${C_BOLD}Códigos de salida${C_RESET} ${C_DIM}${sep}${C_RESET} 0 limpio ${sep} 1 avisos ${sep} 2 crítico ${sep} 64 uso" "exit"
     menu_row "${C_BOLD}WATCH4ME_ALLOW_PORTS=\"22 443\"${C_RESET} ${C_DIM}${sep}${C_RESET} puertos esperados en NET-01" "env"
 }
@@ -593,78 +629,133 @@ menu_pv_cmd() {
     printf '\n%s%s%s\n' "$PV_G" "$1" "$PV_R"
 }
 
+menu_pv_profile() {
+    local profile=$1 use_sudo=${2:-0}
+    local n total id list desc
+    if ! profile_valid "$profile"; then
+        menu_pv_text "Perfil desconocido: $profile"
+        return 0
+    fi
+    n=$(profile_count "$profile")
+    total=${#CHECK_IDS[@]}
+    desc=$(profile_desc "$profile")
+
+    menu_pv_title "PERFIL $(profile_label "$profile")"
+    menu_pv_text "$desc"
+    menu_pv_label 'ALCANCE'
+    menu_pv_text "$n de $total checks del catálogo."
+
+    if [ "$profile" = 'general' ]; then
+        menu_pv_text 'Incluye todo el catálogo, sin exclusiones.'
+    elif [ "$profile" = 'servidor' ] || [ "$profile" = 'cliente' ]; then
+        list=''
+        for id in "${CHECK_IDS[@]}"; do
+            profile_applies "$profile" "$id" || list+="${list:+ }$id"
+        done
+        menu_pv_label 'CHECKS OMITIDOS'
+        menu_pv_text "$list"
+    else
+        list=$(profile_included_text "$profile")
+        menu_pv_label 'CHECKS INCLUIDOS'
+        menu_pv_text "$list"
+    fi
+
+    menu_pv_label 'CUÁNDO USARLO'
+    case "$profile" in
+        general)   menu_pv_text 'Para una revisión completa del equipo: es la opción recomendada.' ;;
+        servidor)  menu_pv_text 'En un servidor o VPS: exposición, SSH, servicios, integridad y persistencia.' ;;
+        cliente)   menu_pv_text 'En un portátil o escritorio: actualizaciones, cuentas, firewall, malware, Wi-Fi, cifrado y bloqueo.' ;;
+        domestico) menu_pv_text 'En el PC de casa: lo importante sin la auditoría avanzada de servidor.' ;;
+        esencial)  menu_pv_text 'Para una primera mirada rápida: 14 checks baratos y de alto valor.' ;;
+    esac
+    menu_pv_label 'SUDO'
+    if [ "$use_sudo" -eq 1 ]; then
+        menu_pv_text 'Activado: esta ejecución usará sudo -n para leer archivos protegidos.'
+    else
+        menu_pv_text 'Desactivado. Puedes activarlo con la fila «Lecturas con sudo».'
+    fi
+    menu_pv_label 'GUARDAR'
+    menu_pv_text 'Al terminar te preguntará si guardar el informe .md y el .json.'
+    menu_pv_label 'EFECTOS'
+    menu_pv_text 'Solo lectura: no modifica el sistema.'
+    menu_pv_label 'EQUIVALENTE EN CLI'
+    if [ "$profile" = 'general' ]; then
+        menu_pv_cmd "./watch4me.sh audit$([ "$use_sudo" -eq 1 ] && printf ' --sudo')"
+    else
+        menu_pv_cmd "./watch4me.sh audit --profile $profile$([ "$use_sudo" -eq 1 ] && printf ' --sudo')"
+    fi
+    menu_pv_label 'TIEMPO'
+    case "$profile" in
+        general)  menu_pv_text 'Normalmente entre 10 y 30 s, según el equipo.' ;;
+        esencial) menu_pv_text 'Normalmente menos de 10 s.' ;;
+        *)        menu_pv_text 'Normalmente menos que la general; depende del equipo.' ;;
+    esac
+}
+
 menu_pv_action() {
     local id=$1
     case "$id" in
-        audit-full)
-            menu_pv_title 'AUDITORÍA COMPLETA'
-            menu_pv_text 'Recomendada: la revisión más fiable, con los 70 checks y tiempo suficiente.'
-            menu_pv_label 'CUÁNDO USARLA'
-            menu_pv_text 'Para una revisión seria del equipo. Tarda más, pero omite menos.'
-            menu_pv_label 'QUÉ INCLUYE'
-            menu_pv_text 'Los 8 dominios y la verificación de integridad de paquetes.'
-            menu_pv_text 'Al terminar ofrece guardar el informe .md y .json.'
-            menu_pv_label 'EFECTOS'
-            menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_label 'EQUIVALENTE EN CLI'
-            menu_pv_cmd './watch4me.sh audit'
-            menu_pv_label 'TIEMPO'
-            menu_pv_text 'Normalmente entre 10 y 30 s, según el equipo.'
+        audit-general|audit-full)
+            menu_pv_profile general 0
             ;;
-        audit-quick)
-            menu_pv_title 'AUDITORÍA RÁPIDA'
-            menu_pv_text 'La misma batería en menos tiempo. Puede omitir checks lentos.'
-            menu_pv_label 'CUÁNDO USARLA'
-            menu_pv_text 'Para una primera mirada o si tienes prisa: unos segundos.'
-            menu_pv_label 'QUÉ CAMBIA'
-            menu_pv_text 'Los escaneos bajan de 30 s a 8 s y se omite INT-02.'
-            menu_pv_text 'No es menos segura: es menos exhaustiva.'
-            menu_pv_label 'EFECTOS'
-            menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_label 'EQUIVALENTE EN CLI'
-            menu_pv_cmd './watch4me.sh audit --profile quick'
+        audit-servidor)
+            menu_pv_profile servidor 0
             ;;
-        audit-sudo|audit-quick-sudo)
-            if [ "$id" = 'audit-quick-sudo' ]; then
-                menu_pv_title 'RÁPIDA CON SUDO'
-                menu_pv_text 'La rápida, con lecturas de archivos protegidos.'
-            else
-                menu_pv_title 'COMPLETA CON SUDO'
-                menu_pv_text 'La completa, con lecturas de archivos protegidos.'
-            fi
-            menu_pv_label 'QUÉ AÑADE'
-            menu_pv_text 'Más checks reales: sudoers, SSH, firewall, paquetes, procesos...'
-            menu_pv_text 'Lo que no pueda leer sale como «omitido», no como «fallo».'
-            menu_pv_label 'IMPORTANTE'
-            menu_pv_text 'Nunca pide contraseña. Activa antes la caché con: sudo -v'
-            menu_pv_label 'EFECTOS'
-            menu_pv_text 'Solo lectura. No modifica el sistema.'
-            menu_pv_label 'EQUIVALENTE EN CLI'
-            if [ "$id" = 'audit-quick-sudo' ]; then
-                menu_pv_cmd './watch4me.sh audit --profile quick --sudo'
-            else
-                menu_pv_cmd './watch4me.sh audit --sudo'
-            fi
+        audit-cliente)
+            menu_pv_profile cliente 0
+            ;;
+        audit-domestico)
+            menu_pv_profile domestico 0
+            ;;
+        audit-esencial|audit-quick)
+            menu_pv_profile esencial 0
+            ;;
+        audit-sudo)
+            menu_pv_profile general 1
+            ;;
+        audit-quick-sudo)
+            menu_pv_profile esencial 1
             ;;
         audit-save)
-            menu_pv_title 'GUARDAR INFORME'
-            menu_pv_text 'Hace la auditoría completa y guarda dos ficheros.'
-            menu_pv_label 'QUÉ GUARDA'
-            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.md  (para leer)'
-            menu_pv_text 'reports/watch4me_<host>_DD_MM_AAAA_HH_MM.json (para IA)'
-            menu_pv_label 'CUÁNDO USARLA'
-            menu_pv_text 'Antes y después de un cambio, para poder comparar.'
+            menu_pv_profile general 0
+            ;;
+        toggle-sudo)
+            menu_pv_title 'LECTURAS CON SUDO'
+            menu_pv_text 'Activa o desactiva sudo -n para las próximas auditorías y para watch.'
+            menu_pv_label 'CÓMO FUNCIONA'
+            menu_pv_text 'Nunca pide contraseña: si no hay caché de sudo, los checks protegidos salen omitidos.'
+            menu_pv_text 'Actívala antes en la terminal con: sudo -v'
+            menu_pv_label 'QUÉ AÑADE'
+            menu_pv_text 'Más datos reales: sudoers, SSH, firewall, paquetes, procesos y ficheros protegidos.'
             menu_pv_label 'EFECTOS'
-            menu_pv_text 'Solo lectura del sistema. Solo escribe los dos informes.'
+            menu_pv_text 'Solo lectura. La caché de sudo la gestiona el sistema.'
+            menu_pv_label 'ATAJO'
+            menu_pv_cmd 'sudo -v && ./watch4me.sh audit --sudo'
+            ;;
+        watch)
+            menu_pv_title 'VIGILANCIA EN VIVO'
+            menu_pv_text 'Monitoriza puertos, conexiones, servicios, procesos y ficheros críticos.'
+            menu_pv_label 'QUÉ HACE'
+            menu_pv_text 'Compara capturas cada 3 s y avisa de puertos nuevos, servicios que cambian,'
+            menu_pv_text 'ficheros críticos modificados y procesos sospechosos.'
+            menu_pv_text 'Marca puertos de riesgo, binarios borrados o en rutas temporales, mineros,'
+            menu_pv_text 'shells inversas, servicios failed y contenido en ld.so.preload.'
+            menu_pv_label 'QUÉ NO HACE'
+            menu_pv_text 'No es un antivirus: no bloquea, no mata procesos y no modifica el sistema.'
+            menu_pv_label 'REQUISITOS'
+            menu_pv_text 'ss (iproute2). La pantalla en vivo necesita TTY y color; sin ellos hace una captura.'
             menu_pv_label 'EQUIVALENTE EN CLI'
-            menu_pv_cmd './watch4me.sh audit --save'
+            menu_pv_cmd './watch4me.sh watch'
+            menu_pv_cmd './watch4me.sh watch --once'
+            menu_pv_label 'SALIR'
+            menu_pv_text 'Ctrl-C detiene la vigilancia y vuelve al menú.'
             ;;
         explain-pick)
             menu_pv_title 'EXPLICAR UN CHECK'
             menu_pv_text 'Abre un buscador con los checks registrados.'
             menu_pv_label 'CÓMO'
             menu_pv_text 'Escribe un ID (NET-01), un título o un dominio (SSH, red,'
-            menu_pv_text 'contraseñas...). El panel derecho muestra la ficha.'
+            menu_pv_text 'contraseñas...). El panel derecho muestra la ficha y los perfiles.'
             menu_pv_text 'ENTER abre la descripción completa y el remedio sugerido.'
             menu_pv_label 'EQUIVALENTE EN CLI'
             menu_pv_cmd './watch4me.sh explain NET-01'
@@ -672,7 +763,9 @@ menu_pv_action() {
         explain-list)
             menu_pv_title 'CATÁLOGO DE CHECKS'
             menu_pv_text 'Muestra todos los checks agrupados por dominio, con su ID,'
-            menu_pv_text 'severidad y título.'
+            menu_pv_text 'severidad, perfiles que lo incluyen y título.'
+            menu_pv_label 'PERFILES'
+            menu_pv_text 'S servidor · C cliente · D doméstico · E esencial · - solo general'
             menu_pv_label 'EFECTOS'
             menu_pv_text 'Solo lectura. Abre el resultado en el paginador.'
             menu_pv_label 'EQUIVALENTE EN CLI'
@@ -685,14 +778,14 @@ menu_pv_action() {
             menu_pv_text 'El panel derecho muestra una vista previa del Markdown o del JSON.'
             menu_pv_text 'ENTER lo abre en less (o en cat si no está disponible).'
             menu_pv_label 'SI ESTÁ VACÍO'
-            menu_pv_text 'Ejecuta antes «Auditar y guardar informe».'
+            menu_pv_text 'Ejecuta una auditoría y responde «s» cuando ofrezca guardar.'
             ;;
         help)
             menu_pv_title 'AYUDA Y ATAJOS'
             menu_pv_text 'Reúne los comandos directos de watch4me con ejemplos listos'
-            menu_pv_text 'para copiar: perfiles, sudo, informes y explain.'
+            menu_pv_text 'para copiar: perfiles, watch, sudo, informes y explain.'
             menu_pv_label 'INCLUYE'
-            menu_pv_text '--save, --save -, --save <ruta>, --profile, --sudo,'
+            menu_pv_text '--profile, watch, --once, --interval, --save, --save -, --sudo,'
             menu_pv_text 'explain, códigos de salida y variables de entorno.'
             menu_pv_label 'ATAJOS'
             menu_pv_text 'Dentro del menú: escribe para filtrar, ENTER para ejecutar,'
@@ -722,6 +815,8 @@ menu_pv_check() {
     printf '%sSeveridad:%s %s   %sDominio:%s %s\n' \
         "$PV_D" "$PV_R" "$(sev_label "$sev")" \
         "$PV_D" "$PV_R" "${DOMAIN_NAME[$dom]:-$dom}"
+    printf '%sPerfiles:%s %s\n' \
+        "$PV_D" "$PV_R" "$(profile_names "$id")"
     if [ -n "${CHECK_DESC[$id]:-}" ]; then
         menu_pv_label 'QUÉ COMPRUEBA'
         printf '%s\n' "${CHECK_DESC[$id]}"
@@ -767,14 +862,51 @@ menu_pv_help() {
             menu_pv_label 'COMANDO'
             menu_pv_cmd './watch4me.sh audit'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Ejecuta los 70 checks con el perfil full sin pasar por el menú.'
+            menu_pv_text "Ejecuta los ${#CHECK_IDS[@]} checks del perfil general sin pasar por el menú."
+            menu_pv_text 'Al terminar ofrece guardar el informe .md y .json.'
             ;;
-        quick)
-            menu_pv_title 'PERFIL RÁPIDO'
+        profiles)
+            menu_pv_title 'PERFILES DE AUDITORÍA'
+            menu_pv_text 'Cambian qué checks se ejecutan, no su profundidad.'
+            menu_pv_label 'COMANDOS'
+            menu_pv_cmd './watch4me.sh audit --profile general'
+            menu_pv_cmd './watch4me.sh audit --profile servidor'
+            menu_pv_cmd './watch4me.sh audit --profile cliente'
+            menu_pv_cmd './watch4me.sh audit --profile domestico'
+            menu_pv_cmd './watch4me.sh audit --profile esencial'
+            menu_pv_label 'RESUMEN'
+            menu_pv_text "general $(profile_count general) · servidor $(profile_count servidor) · cliente $(profile_count cliente) · doméstico $(profile_count domestico) · esencial $(profile_count esencial) checks"
+            menu_pv_text 'Alias compatibles: full = general · quick = esencial.'
+            menu_pv_label 'CONSEJO'
+            menu_pv_text 'Usa el perfil que describa el equipo; la general sigue siendo la referencia.'
+            ;;
+        watch)
+            menu_pv_title 'VIGILANCIA EN VIVO'
             menu_pv_label 'COMANDO'
-            menu_pv_cmd './watch4me.sh audit --profile quick'
+            menu_pv_cmd './watch4me.sh watch'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Reduce los timeouts (5-8 s) y omite INT-02.'
+            menu_pv_text 'Captura sockets, conexiones, servicios, procesos y ficheros críticos.'
+            menu_pv_text 'Compara cada 3 s y avisa de puertos nuevos, servicios que cambian,'
+            menu_pv_text 'ficheros modificados, mineros, shells inversas y rutas temporales.'
+            menu_pv_label 'QUÉ NO HACE'
+            menu_pv_text 'No es un antivirus: no bloquea, no mata procesos ni modifica el sistema.'
+            menu_pv_label 'REQUISITOS'
+            menu_pv_text 'ss (iproute2) y TTY con color para la pantalla en vivo.'
+            menu_pv_label 'SALIR'
+            menu_pv_text 'Ctrl-C detiene la vigilancia.'
+            ;;
+        watch-once)
+            menu_pv_title 'VIGILANCIA: UNA CAPTURA'
+            menu_pv_label 'COMANDO'
+            menu_pv_cmd './watch4me.sh watch --once'
+            menu_pv_label 'QUÉ HACE'
+            menu_pv_text 'Toma una única instantánea y sale sin abrir la pantalla en vivo.'
+            menu_pv_text 'Ideal para cron, scripts o para revisar sin quedarse vigilando.'
+            menu_pv_label 'CÓDIGOS'
+            menu_pv_text '0 sin hallazgos · 1 avisos · 2 hallazgos críticos · 64 falta ss'
+            menu_pv_label 'INTERVALO'
+            menu_pv_cmd './watch4me.sh watch --interval 5'
+            menu_pv_text 'Cambia los segundos entre capturas en el modo en vivo.'
             ;;
         sudo)
             menu_pv_title 'LECTURAS CON SUDO'
@@ -783,6 +915,7 @@ menu_pv_help() {
             menu_pv_label 'QUÉ HACE'
             menu_pv_text 'Usa «sudo -n» para lecturas que requieren root.'
             menu_pv_text 'Nunca pide contraseña: sin caché de sudo, el check sale SKIP.'
+            menu_pv_text 'También se aplica a la vigilancia: ./watch4me.sh watch --sudo'
             menu_pv_label 'CONSEJO'
             menu_pv_cmd 'sudo -v && ./watch4me.sh audit --sudo'
             ;;
@@ -823,7 +956,7 @@ menu_pv_help() {
             menu_pv_label 'COMANDO'
             menu_pv_cmd './watch4me.sh explain --list'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Lista los 70 checks agrupados por dominio con su severidad.'
+            menu_pv_text "Lista los ${#CHECK_IDS[@]} checks agrupados por dominio, con severidad y perfiles."
             ;;
         cli)
             menu_pv_title 'AYUDA Y VERSIÓN'
@@ -844,9 +977,9 @@ menu_pv_help() {
         combo)
             menu_pv_title 'COMBINAR OPCIONES'
             menu_pv_label 'COMANDO'
-            menu_pv_cmd './watch4me.sh audit --profile quick --sudo --save'
+            menu_pv_cmd './watch4me.sh audit --profile cliente --sudo --save'
             menu_pv_label 'QUÉ HACE'
-            menu_pv_text 'Perfil rápido, lecturas privilegiadas y guardado automático.'
+            menu_pv_text 'Perfil cliente, lecturas privilegiadas y guardado automático.'
             menu_pv_text 'El orden de las opciones no importa.'
             ;;
         exit)
@@ -854,7 +987,7 @@ menu_pv_help() {
             menu_pv_text '0   sin hallazgos relevantes'
             menu_pv_text '1   avisos o fallos no críticos'
             menu_pv_text '2   al menos un fallo crítico'
-            menu_pv_text '64  uso incorrecto o modo no disponible'
+            menu_pv_text '64  uso incorrecto, modo no disponible o falta ss en watch'
             menu_pv_label 'EJEMPLO EN SCRIPT'
             menu_pv_cmd './watch4me.sh audit --save - > informe.md || rc=$?'
             menu_pv_text 'rc guarda el código para decidir si hay que alertar.'
@@ -919,11 +1052,13 @@ menu_main() {
         id=${sel##*"$MENU_TAB"}
 
         case "$id" in
-            audit-full)       menu_run_audit full 0 '' ;;
-            audit-quick)      menu_run_audit quick 0 '' ;;
-            audit-sudo)       menu_run_audit full 1 '' ;;
-            audit-quick-sudo) menu_run_audit quick 1 '' ;;
-            audit-save)       menu_run_audit full 0 'reports' ;;
+            audit-general)    menu_run_audit general ;;
+            audit-servidor)   menu_run_audit servidor ;;
+            audit-cliente)    menu_run_audit cliente ;;
+            audit-domestico)  menu_run_audit domestico ;;
+            audit-esencial)   menu_run_audit esencial ;;
+            toggle-sudo)      MENU_SUDO=$(( 1 - MENU_SUDO )) ;;
+            watch)            menu_watch ;;
             explain-pick)     menu_pick_check ;;
             explain-list)     menu_show_catalog ;;
             reports)          menu_reports ;;

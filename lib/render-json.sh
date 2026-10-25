@@ -55,7 +55,10 @@ _json_evidence() {
 render_json() {
     local base=${1:-}
     local host kernel now root_txt
-    local id st sev w penalty first dom
+    local id st sev w penalty first dom run_n
+    local -a run_ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#run_ids[@]}" -gt 0 ] || run_ids=("${CHECK_IDS[@]}")
+    run_n=${#run_ids[@]}
     local exit_code=${EXIT_CODE:-0}
 
     host=${HOSTNAME_SHORT:-$(hostname 2>/dev/null || printf 'localhost')}
@@ -73,7 +76,7 @@ render_json() {
 
     printf '  "tool": {\n'
     printf '    "name": "watch4me",\n'
-    printf '    "version": %s,\n' "$(_json_str "${VERSION:-0.5.0}")"
+    printf '    "version": %s,\n' "$(_json_str "${VERSION:-0.6.0}")"
     printf '    "license": "GPLv3"\n'
     printf '  },\n'
 
@@ -94,11 +97,22 @@ render_json() {
     printf '  },\n'
 
     printf '  "run": {\n'
-    printf '    "profile": %s,\n' "$(_json_str "${PROFILE:-full}")"
+    printf '    "profile": %s,\n' "$(_json_str "${PROFILE:-general}")"
+    printf '    "profile_label": %s,\n' "$(_json_str "${PROFILE_LABEL:-General}")"
+    printf '    "profile_description": %s,\n' "$(_json_str "${PROFILE_DESC:-}")"
+    printf '    "checks_catalog": %s,\n' "${#CHECK_IDS[@]}"
+    printf '    "checks_total": %s,\n' "$run_n"
+    printf '    "checks_excluded": ['
+    first=1
+    for id in "${PROFILE_EXCLUDED_IDS[@]}"; do
+        [ "$first" -eq 1 ] || printf ', '
+        printf '%s' "$(_json_str "$id")"
+        first=0
+    done
+    printf '],\n'
     printf '    "root": %s,\n' "$(_json_bool "$root_txt")"
     printf '    "sudo_requested": %s,\n' "$(_json_bool "${USE_SUDO:-0}")"
     printf '    "duration_seconds": %s,\n' "${ELAPSED:-0}"
-    printf '    "checks_total": %s,\n' "${#CHECK_IDS[@]}"
     printf '    "exit_code": %s\n' "$exit_code"
     printf '  },\n'
 
@@ -141,7 +155,7 @@ render_json() {
 
     printf '  "checks": [\n'
     first=1
-    for id in "${CHECK_IDS[@]}"; do
+    for id in "${run_ids[@]}"; do
         st=$(status_of "$id")
         sev=${CHECK_SEVERITY[$id]}
         w=$(sev_weight "$sev")

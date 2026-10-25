@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.5.0'
+VERSION='0.6.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -29,6 +29,10 @@ LIB_DIR="$SCRIPT_DIR/lib"
 . "$LIB_DIR/distro.sh"
 # shellcheck source=lib/checks.sh
 . "$LIB_DIR/checks.sh"
+# shellcheck source=lib/profiles.sh
+. "$LIB_DIR/profiles.sh"
+# shellcheck source=lib/watch.sh
+. "$LIB_DIR/watch.sh"
 # shellcheck source=lib/render-term.sh
 . "$LIB_DIR/render-term.sh"
 # shellcheck source=lib/render-md.sh
@@ -37,7 +41,6 @@ LIB_DIR="$SCRIPT_DIR/lib"
 . "$LIB_DIR/render-json.sh"
 
 MODE=''
-PROFILE='full'
 SAVE_TO=''
 NO_ANIM_FLAG=0
 NO_COLOR_FLAG=0
@@ -58,28 +61,42 @@ USO
   ./watch4me.sh                 menú interactivo (TTY) o auditoría (sin TTY)
   ./watch4me.sh menu            fuerza el menú interactivo (requiere fzf)
   ./watch4me.sh audit [opciones]
+  ./watch4me.sh watch [opciones]
   ./watch4me.sh explain <ID> [<ID>...]
   ./watch4me.sh explain --list
   ./watch4me.sh --help
 
 OPCIONES
   -m, --menu             abre el menú interactivo (requiere fzf)
-  --profile quick|full   quick reduce los timeouts de red (por defecto: full)
+  --profile P            perfil de auditoría (por defecto: general)
   --save [ruta]          guarda el informe Markdown y el JSON sin preguntar
                          sin ruta usa reports/; con "-" escribe solo el
                          Markdown por stdout
   --no-anim              desactiva la cabecera animada
   --no-color             desactiva los colores (también NO_COLOR=1)
   --sudo                 permite lecturas con sudo -n (nunca pide contraseña)
+  --interval N           watch: segundos entre capturas (por defecto: 3)
+  --once                 watch: una sola captura y sale (scripts, cron)
   -h, --help             muestra esta ayuda
   -v, --version          muestra la versión
 
-TIPOS DE AUDITORÍA
-  completa    70 checks y escaneos hasta 30 s. La más fiable (recomendada).
-  rápida      --profile quick: menos tiempo; puede omitir checks lentos.
-  con sudo    --sudo: más datos (sudoers, SSH, firewall, paquetes...).
-              Antes ejecuta "sudo -v": si no hay caché, esos checks se omiten.
-  guardar     --save: hace la completa y guarda informes .md y .json en reports/.
+PERFILES (cambian qué checks se ejecutan, no su profundidad)
+  general    $(profile_count general) checks  Todo el catálogo. La más fiable.
+  servidor   $(profile_count servidor) checks  Exposición, SSH, servicios, integridad y persistencia.
+  cliente    $(profile_count cliente) checks  Escritorio, cuentas, firewall, malware, Wi-Fi, cifrado y bloqueo.
+  domestico  $(profile_count domestico) checks  Lo importante de un PC de casa, sin hardening de servidor.
+  esencial   $(profile_count esencial) checks  Vistazo rápido de alto valor (escaneos de hasta 8 s).
+  Alias compatibles: full = general · quick = esencial
+
+VIGILANCIA
+  watch                  monitor en vivo de puertos, conexiones, servicios,
+                         procesos y ficheros críticos. Solo lectura: no
+                         bloquea, no instala y no modifica nada. No guarda
+                         informes: para conservar un análisis usa audit --save.
+  --interval N           segundos entre capturas (por defecto: 3)
+  --once                 una sola captura y sale; útil sin TTY o en cron
+  Requiere ss (iproute2). La pantalla en vivo necesita TTY y color; sin
+  color o sin TTY se muestra una única captura.
 
 MENÚ
   El menú usa fzf, que es opcional: la auditoría funciona sin él.
@@ -90,9 +107,12 @@ MENÚ
 
 EJEMPLOS
   ./watch4me.sh
-  ./watch4me.sh audit --profile quick
-  ./watch4me.sh audit --save
+  ./watch4me.sh audit --profile servidor
+  ./watch4me.sh audit --profile esencial
+  ./watch4me.sh audit --sudo --save
   ./watch4me.sh audit --save - > informe.md
+  ./watch4me.sh watch
+  ./watch4me.sh watch --once --interval 5
   ./watch4me.sh explain --list
   ./watch4me.sh explain NET-01 SVC-07
 
@@ -100,6 +120,7 @@ SALIDA
   0  sin hallazgos relevantes
   1  avisos o fallos no críticos
   2  al menos un fallo crítico
+  64 uso incorrecto, modo no disponible o falta ss en watch
 
 VARIABLES
   NO_COLOR=1                desactiva colores
@@ -118,6 +139,7 @@ parse_args() {
                 shift 2 2>/dev/null || true
                 ;;
             audit) MODE=audit ;;
+            watch) MODE=watch ;;
             menu|--menu|-m) MODE=menu ;;
             baseline|monitor)
                 MODE=$1
@@ -141,13 +163,22 @@ parse_args() {
                 done
                 ;;
             --profile)
-                [ $# -ge 2 ] || die '--profile requiere quick|full'
+                [ $# -ge 2 ] || die '--profile requiere general|servidor|cliente|domestico|esencial'
                 PROFILE=$2
                 shift
                 ;;
             --profile=*)
                 PROFILE=${1#*=}
                 ;;
+            --interval)
+                [ $# -ge 2 ] || die '--interval requiere un número de segundos'
+                WATCH_INTERVAL=$2
+                shift
+                ;;
+            --interval=*)
+                WATCH_INTERVAL=${1#*=}
+                ;;
+            --once) WATCH_ONCE=1 ;;
             --save)
                 if [ $# -ge 2 ] && { [ "${2#-}" = "$2" ] || [ "$2" = '-' ]; }; then
                     SAVE_TO=$2
@@ -182,9 +213,20 @@ parse_args() {
     }
 
     case "$PROFILE" in
-        quick|full) ;;
-        *) die "perfil desconocido: $PROFILE (usa quick o full)" ;;
+        '') PROFILE='general' ;;
     esac
+    PROFILE=$(profile_normalize "$PROFILE")
+    if ! profile_valid "$PROFILE"; then
+        die "perfil desconocido: $PROFILE (usa general, servidor, cliente, domestico o esencial)"
+    fi
+
+    if ! [[ "${WATCH_INTERVAL:-3}" =~ ^[0-9]+$ ]] || [ "${WATCH_INTERVAL:-3}" -lt 1 ]; then
+        die '--interval requiere un número de segundos mayor o igual que 1'
+    fi
+
+    if [ "$MODE" = 'watch' ] && [ -n "$SAVE_TO" ]; then
+        die 'el modo watch no guarda informes; usa audit --save'
+    fi
 }
 
 load_checks() {
@@ -210,12 +252,14 @@ init_run_dir() {
 }
 
 run_checks() {
-    if [ "${#CHECK_IDS[@]}" -eq 0 ]; then
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
+    if [ "${#ids[@]}" -eq 0 ]; then
         warn 'no se cargó ningún check'
         return 1
     fi
 
-    local total=${#CHECK_IDS[@]}
+    local total=${#ids[@]}
     printf '0\n' > "$RUN_DIR/progress"
     : > "$RUN_DIR/current"
 
@@ -234,7 +278,7 @@ run_checks() {
     (
         trap - EXIT INT TERM HUP
         local n=0 id
-        for id in "${CHECK_IDS[@]}"; do
+        for id in "${ids[@]}"; do
             printf '%s\n' "$id" > "$RUN_DIR/current"
             run_single_check "$id"
             n=$(( n + 1 ))
@@ -405,9 +449,10 @@ maybe_save() {
 }
 
 explain_list() {
-    local dom id sev
+    local dom id sev tags
     printf '%sCatálogo de checks%s (%d)\n' "$C_BOLD" "$C_RESET" "${#CHECK_IDS[@]}"
     printf '%sCada check se puede detallar con: ./watch4me.sh explain <ID>%s\n' "$C_DIM" "$C_RESET"
+    printf '%sPerfiles: S servidor · C cliente · D doméstico · E esencial · - solo general%s\n' "$C_DIM" "$C_RESET"
 
     for dom in SYS USR NET SVC FS AUTH INT MAL; do
         local -a ids=()
@@ -419,8 +464,11 @@ explain_list() {
         printf '\n%s── %s (%s)%s\n' "$C_BOLD$C_CYAN_B" "${DOMAIN_NAME[$dom]:-$dom}" "$dom" "$C_RESET"
         for id in "${ids[@]}"; do
             sev=$(sev_label "${CHECK_SEVERITY[$id]}")
-            printf '  %s%-7s%s %s[%s]%s %s\n' \
-                "$C_BOLD" "$id" "$C_RESET" "$C_DIM" "$sev" "$C_RESET" "${CHECK_TITLE[$id]}"
+            tags=$(profile_tags "$id")
+            [ -n "$tags" ] || tags='-'
+            printf '  %s%-7s%s %s[%s]%s %s%-3s%s %s\n' \
+                "$C_BOLD" "$id" "$C_RESET" "$C_DIM" "$sev" "$C_RESET" \
+                "$C_CYAN" "$tags" "$C_RESET" "${CHECK_TITLE[$id]}"
         done
     done
 
@@ -433,7 +481,8 @@ explain_check() {
 
     printf '%s%s%s · %s\n' "$C_BOLD" "$id" "$C_RESET" "${CHECK_TITLE[$id]}"
     printf '%sSeveridad:%s %s\n' "$C_DIM" "$C_RESET" "$(sev_label "${CHECK_SEVERITY[$id]}")"
-    printf '%sDominio:%s   %s\n\n' "$C_DIM" "$C_RESET" "${DOMAIN_NAME[${id%%-*}]:-${id%%-*}}"
+    printf '%sDominio:%s   %s\n' "$C_DIM" "$C_RESET" "${DOMAIN_NAME[${id%%-*}]:-${id%%-*}}"
+    printf '%sPerfiles:%s  %s\n\n' "$C_DIM" "$C_RESET" "$(profile_names "$id")"
 
     if [ -n "${CHECK_DESC[$id]}" ]; then
         printf '%s\n\n' "${CHECK_DESC[$id]}"
@@ -485,6 +534,7 @@ main() {
 
     case "$MODE" in
         help)
+            load_checks
             usage
             return 0
             ;;
@@ -502,8 +552,13 @@ main() {
             menu_main
             return $?
             ;;
+        watch)
+            watch_main
+            return $?
+            ;;
         baseline|monitor)
-            printf 'watch4me: el modo %s se implementa en el hito M3 (baseline y vigilancia).\n' "$MODE" >&2
+            printf 'watch4me: el modo %s se implementa en el hito M3 (baseline y monitorización programada).\n' "$MODE" >&2
+            printf 'watch4me: para vigilancia en vivo usa ./watch4me.sh watch\n' >&2
             return 64
             ;;
         explain)
@@ -517,6 +572,7 @@ main() {
     esac
 
     load_checks
+    profile_set "$PROFILE"
     init_run_dir
 
     run_checks

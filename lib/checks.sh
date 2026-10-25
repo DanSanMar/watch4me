@@ -3,6 +3,7 @@
 # Licencia: GPLv3
 
 declare -a CHECK_IDS=()
+declare -a ACTIVE_CHECK_IDS=()
 declare -A CHECK_SEVERITY=()
 declare -A CHECK_TITLE=()
 declare -A CHECK_FUNC=()
@@ -100,7 +101,9 @@ status_label() {
 # Veredicto común a los informes Markdown y JSON.
 audit_verdict_text() {
     local crit_fail=0 id st sev
-    for id in "${CHECK_IDS[@]}"; do
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
+    for id in "${ids[@]}"; do
         st=$(status_of "$id")
         [ "$st" = FAIL ] || continue
         sev=${CHECK_SEVERITY[$id]}
@@ -190,6 +193,8 @@ evidence_of() {
 
 compute_scores() {
     local id sev st w dom p possible penalty
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
     COUNT[PASS]=0 COUNT[WARN]=0 COUNT[FAIL]=0 COUNT[SKIP]=0 COUNT[INFO]=0
     TOTAL_POSSIBLE=0
     TOTAL_PENALTY=0
@@ -201,7 +206,7 @@ compute_scores() {
     DOMAIN_WARN=()
     DOMAIN_SKIP=()
 
-    for id in "${CHECK_IDS[@]}"; do
+    for id in "${ids[@]}"; do
         sev=${CHECK_SEVERITY[$id]}
         st=$(status_of "$id")
         dom=$(domain_of "$id")
@@ -280,14 +285,16 @@ score_verdict() {
 # 0 = todo correcto, 1 = avisos o fallos, 2 = algún fallo crítico.
 compute_exit_code() {
     local id st sev
-    for id in "${CHECK_IDS[@]}"; do
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
+    for id in "${ids[@]}"; do
         st=$(status_of "$id")
         sev=${CHECK_SEVERITY[$id]}
         if [ "$st" = FAIL ] && [ "$sev" = critical ]; then
             return 2
         fi
     done
-    for id in "${CHECK_IDS[@]}"; do
+    for id in "${ids[@]}"; do
         st=$(status_of "$id")
         if [ "$st" = FAIL ] || [ "$st" = WARN ]; then
             return 1

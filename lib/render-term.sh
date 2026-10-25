@@ -74,7 +74,7 @@ _term_bar() {
 }
 
 _term_summary() {
-    local width=${1:-100} verdict color
+    local width=${1:-100} verdict color active_n total_n
     if [ "$GLOBAL_SCORE" -ge 80 ]; then
         color=$C_GREEN_B; verdict='BUENO'
     elif [ "$GLOBAL_SCORE" -ge 50 ]; then
@@ -82,6 +82,9 @@ _term_summary() {
     else
         color=$C_RED_B; verdict='CRÍTICO'
     fi
+    active_n=${#ACTIVE_CHECK_IDS[@]}
+    [ "$active_n" -gt 0 ] || active_n=${#CHECK_IDS[@]}
+    total_n=${#CHECK_IDS[@]}
 
     _term_section 'Resumen' 42 "$width"
     printf '\n'
@@ -115,15 +118,21 @@ _term_summary() {
         printf '  %s %d info\n' "$(status_icon INFO)" "${COUNT[INFO]}"
     fi
 
+    if [ "${#PROFILE_EXCLUDED_IDS[@]}" -gt 0 ]; then
+        printf '\n  %sExcluidos por este perfil (%d):%s\n' \
+            "$C_DIM" "${#PROFILE_EXCLUDED_IDS[@]}" "$C_RESET"
+        _term_wrap "$(profile_excluded_text)" 4 "$width"
+    fi
+
     if [ "$width" -ge 70 ]; then
-        printf '  %sDuración:%s %ss · %sperfil:%s %s · %shost:%s %s%s\n' \
+        printf '  %sDuración:%s %ss · %sperfil:%s %s (%d/%d checks) · %shost:%s %s%s\n' \
             "$C_DIM" "$C_RESET" "${ELAPSED:-0}" \
-            "$C_DIM" "$C_RESET" "${PROFILE:-full}" \
+            "$C_DIM" "$C_RESET" "${PROFILE_LABEL:-General}" "$active_n" "$total_n" \
             "$C_DIM" "$C_RESET" "${HOSTNAME_SHORT:-localhost}" "$C_RESET"
     else
-        printf '  %sDuración:%s %ss · %sperfil:%s %s\n' \
+        printf '  %sDuración:%s %ss · %sperfil:%s %s (%d/%d)\n' \
             "$C_DIM" "$C_RESET" "${ELAPSED:-0}" \
-            "$C_DIM" "$C_RESET" "${PROFILE:-full}"
+            "$C_DIM" "$C_RESET" "${PROFILE_LABEL:-General}" "$active_n" "$total_n"
         printf '  %shost:%s %s%s\n' \
             "$C_DIM" "$C_RESET" "${HOSTNAME_SHORT:-localhost}" "$C_RESET"
     fi
@@ -132,11 +141,13 @@ _term_summary() {
 # Fallos confirmados: se explican en detalle porque exigen acción.
 _term_failures() {
     local width=$1 sev id detail n=0
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
 
     _term_section 'Fallos' 41 "$width"
 
     for sev in critical high medium low; do
-        for id in "${CHECK_IDS[@]}"; do
+        for id in "${ids[@]}"; do
             [ "${CHECK_SEVERITY[$id]}" = "$sev" ] || continue
             [ "$(status_of "$id")" = FAIL ] || continue
             n=$(( n + 1 ))
@@ -158,6 +169,8 @@ _term_failures() {
 # Avisos: una línea por hallazgo, suficiente para decidir si profundizar.
 _term_warnings() {
     local width=$1 sev id text avail n=0
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
     # Prefijo: 2 espacios + icono + espacio + insignia (9) + espacio
     # + ID (hasta 7) + 2 espacios.
     avail=$(( width - 23 ))
@@ -166,7 +179,7 @@ _term_warnings() {
     _term_section 'Avisos' 41 "$width"
 
     for sev in critical high medium low; do
-        for id in "${CHECK_IDS[@]}"; do
+        for id in "${ids[@]}"; do
             [ "${CHECK_SEVERITY[$id]}" = "$sev" ] || continue
             [ "$(status_of "$id")" = WARN ] || continue
             n=$(( n + 1 ))
@@ -190,6 +203,8 @@ _term_warnings() {
 _term_domains() {
     local width=${1:-100} dom id pass_n
     local -a domains=(SYS USR NET SVC FS AUTH INT MAL)
+    local -a ids=("${ACTIVE_CHECK_IDS[@]}")
+    [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
 
     _term_section 'Por dominio' 37 "$width"
     printf '\n'
@@ -203,7 +218,7 @@ _term_domains() {
         for dom in "${domains[@]}"; do
             [ "${DOMAIN_TOTAL[$dom]:-0}" -gt 0 ] || continue
             pass_n=0
-            for id in "${CHECK_IDS[@]}"; do
+            for id in "${ids[@]}"; do
                 [ "$(domain_of "$id")" = "$dom" ] || continue
                 [ "$(status_of "$id")" = PASS ] && pass_n=$(( pass_n + 1 ))
             done
@@ -220,7 +235,7 @@ _term_domains() {
         for dom in "${domains[@]}"; do
             [ "${DOMAIN_TOTAL[$dom]:-0}" -gt 0 ] || continue
             pass_n=0
-            for id in "${CHECK_IDS[@]}"; do
+            for id in "${ids[@]}"; do
                 [ "$(domain_of "$id")" = "$dom" ] || continue
                 [ "$(status_of "$id")" = PASS ] && pass_n=$(( pass_n + 1 ))
             done
@@ -237,7 +252,7 @@ _term_domains() {
         for dom in "${domains[@]}"; do
             [ "${DOMAIN_TOTAL[$dom]:-0}" -gt 0 ] || continue
             pass_n=0
-            for id in "${CHECK_IDS[@]}"; do
+            for id in "${ids[@]}"; do
                 [ "$(domain_of "$id")" = "$dom" ] || continue
                 [ "$(status_of "$id")" = PASS ] && pass_n=$(( pass_n + 1 ))
             done
@@ -265,7 +280,9 @@ _term_guide() {
     _term_wrap '• Empieza por CRÍTICA y ALTA. Aplica un cambio cada vez y vuelve a ejecutar la auditoría.' 2 "$width"
     _term_wrap '• Revisa el contexto antes de tocar nada: exposición a Internet, usuarios, datos y servicios.' 2 "$width"
     _term_wrap '• Un aviso puede ser una decisión deliberada; confirma que encaja con tu uso.' 2 "$width"
+    _term_wrap '• Cambia el enfoque con --profile servidor|cliente|domestico|esencial; la general revisa todo.' 2 "$width"
     _term_wrap '• Guarda el informe con --save para comparar el antes y el después.' 2 "$width"
+    _term_wrap '• Vigila conexiones y servicios con ./watch4me.sh watch (solo lectura).' 2 "$width"
     printf '\n'
 
     printf '  %sCómo valorar el peligro%s\n' "$C_BOLD" "$C_RESET"
@@ -279,10 +296,10 @@ _term_guide() {
         printf '  %sDetalle completo y remedios:%s ./watch4me.sh explain <ID>   %s·%s   informe: --save\n' \
             "$C_DIM" "$C_RESET" "$C_DIM" "$C_RESET"
         printf '  %sGenerado por watch4me v%s · GPLv3 · solo lectura%s\n' \
-            "$C_DIM" "${VERSION:-0.5.0}" "$C_RESET"
+            "$C_DIM" "${VERSION:-0.6.0}" "$C_RESET"
     else
         _term_wrap 'Detalle completo y remedios: ./watch4me.sh explain <ID> · informe: --save' 2 "$width"
-        _term_wrap "Generado por watch4me v${VERSION:-0.5.0} · GPLv3 · solo lectura" 2 "$width"
+        _term_wrap "Generado por watch4me v${VERSION:-0.6.0} · GPLv3 · solo lectura" 2 "$width"
     fi
 }
 

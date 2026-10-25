@@ -64,13 +64,13 @@ unit_enabled() {
     have systemctl && systemctl is-enabled --quiet "$1" 2>/dev/null
 }
 
-# Timeout para escaneos pesados según el perfil.
+# Timeout para escaneos pesados según el perfil. El vistazo esencial debe
+# terminar rápido; el resto de perfiles mantienen el margen completo.
 scan_timeout() {
-    if [ "${PROFILE:-full}" = 'quick' ]; then
-        printf '8'
-    else
-        printf '30'
-    fi
+    case "${PROFILE:-general}" in
+        esencial|quick) printf '8' ;;
+        *)              printf '30' ;;
+    esac
 }
 
 # Ejecuta con timeout y sin ruido en stderr.
@@ -90,10 +90,16 @@ user_home() {
     awk -F: -v u="$1" '$1 == u { print $6; exit }' /etc/passwd 2>/dev/null
 }
 
-# ¿La cadena $1 está en la lista separada por espacios $2?
+# ¿La cadena $1 está en la lista separada por espacios $2? Se aceptan
+# saltos de línea y tabuladores porque varias listas de perfiles se escriben
+# en varias líneas por legibilidad.
 in_list() {
-    case " ${2:-} " in
-        *" $1 "*) return 0 ;;
+    local needle=$1
+    local list=" ${2:-} "
+    list=${list//$'\n'/ }
+    list=${list//$'\t'/ }
+    case "$list" in
+        *" $needle "*) return 0 ;;
     esac
     return 1
 }

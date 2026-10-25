@@ -10,6 +10,7 @@
 UI_COLOR=0
 UI_ANIM=0
 UI_UTF8=0
+UI_ICONS=0
 UI_TTY=0
 UI_PROGRESS=0
 UI_PROGRESS_ACTIVE=0
@@ -45,6 +46,11 @@ ui_init() {
     case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
         *UTF-8*|*utf8*|*UTF8*) UI_UTF8=1 ;;
     esac
+    # Los iconos Unicode se reservan para terminales interactivas: en una
+    # tubería o un fichero se usa siempre el fallback ASCII.
+    if [ "$UI_UTF8" -eq 1 ] && [ "$UI_TTY" -eq 1 ]; then
+        UI_ICONS=1
+    fi
 
     UI_WIDTH=$(term_width)
     [ "$UI_WIDTH" -lt 70 ] && UI_COMPACT=1
@@ -97,7 +103,7 @@ ui_palette() {
 }
 
 ui_icon() {
-    if [ "$UI_UTF8" -eq 1 ]; then
+    if [ "$UI_ICONS" -eq 1 ]; then
         printf '%s' "${1:-}"
     else
         printf '%s' "${2:-}"
@@ -148,7 +154,7 @@ ui_line1() {
         c5=$(ui_palette "$(( off + 9 ))")
     fi
     ui_menu_extra_widths
-    if [ "$UI_UTF8" -eq 1 ]; then
+    if [ "$UI_ICONS" -eq 1 ]; then
         icon='🛡'
         subtitle='AUDITORÍA DE SEGURIDAD'
     else
@@ -156,7 +162,7 @@ ui_line1() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.5.0}"
+    ver="v${VERSION:-0.6.0}"
 
     local line=""
     local show_ver=1
@@ -204,7 +210,7 @@ ui_line1() {
 ui_line1_static() {
     local mode=${1:-}
     local icon logo subtitle ver
-    if [ "$UI_UTF8" -eq 1 ]; then
+    if [ "$UI_ICONS" -eq 1 ]; then
         icon='🛡'
         subtitle='AUDITORÍA DE SEGURIDAD'
     else
@@ -212,7 +218,7 @@ ui_line1_static() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.5.0}"
+    ver="v${VERSION:-0.6.0}"
 
     local line=""
     local show_ver=1
@@ -300,10 +306,13 @@ ui_line2_run() {
 }
 
 ui_line2_static() {
-    local root_txt
+    local root_txt active_n
     if [ "$(id -u)" -eq 0 ]; then root_txt='sí'; else root_txt='no'; fi
+    active_n=${#ACTIVE_CHECK_IDS[@]}
+    [ "$active_n" -gt 0 ] || active_n=${#CHECK_IDS[@]}
     local line=""
-    line+=" ${C_DIM}perfil:${C_RESET} ${C_WHITE}${PROFILE:-full}${C_RESET}"
+    line+=" ${C_DIM}perfil:${C_RESET} ${C_WHITE}${PROFILE_LABEL:-General}${C_RESET}"
+    line+=" ${C_DIM}(${active_n} checks)${C_RESET}"
     if [ "$UI_COMPACT" -eq 0 ] || [ "${UI_WIDTH:-100}" -ge 50 ]; then
         line+=" ${C_DIM}·${C_RESET}"
         line+=" ${C_DIM}host:${C_RESET} ${C_WHITE}${HOSTNAME_SHORT:-localhost}${C_RESET}"

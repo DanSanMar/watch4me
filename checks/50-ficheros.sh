@@ -158,7 +158,7 @@ check_fs_03() {
     rc=$?
 
     if [ "$rc" -eq 124 ] && [ -z "$out" ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil general)'
         return
     fi
     if [ -z "$out" ]; then
@@ -245,7 +245,7 @@ check_fs_05() {
     rc=$?
 
     if [ "$rc" -eq 124 ] && [ -z "$out" ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil general)'
         return
     fi
     if [ -z "$out" ]; then
@@ -274,7 +274,7 @@ check_fs_06() {
     rc=$?
 
     if [ "$rc" -eq 124 ] && [ -z "$out" ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil general)'
         return
     fi
     if [ -z "$out" ]; then
@@ -447,7 +447,7 @@ check_fs_10() {
     out=$(with_timeout "$(scan_timeout)" find /var/log -xdev \( -type f -o -type d \) -perm -0002 -print 2>/dev/null)
     rc=$?
     if [ "$rc" -eq 124 ] && [ -z "$out" ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil general)'
         return
     fi
     if [ -z "$out" ]; then

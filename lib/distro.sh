@@ -59,12 +59,14 @@ pkg_update_supported() {
     declare -F pkg_updates_report >/dev/null 2>&1
 }
 
-# Timeout adaptado al perfil: quick divide entre 3 (mínimo 5 s).
+# Timeout adaptado al perfil: el vistazo esencial divide entre 3 (mínimo 5 s).
 pkg_timeout() {
     local t=${1:-30}
-    if [ "${PROFILE:-full}" = 'quick' ]; then
-        t=$(( t / 3 ))
-        [ "$t" -lt 5 ] && t=5
-    fi
+    case "${PROFILE:-general}" in
+        esencial|quick)
+            t=$(( t / 3 ))
+            [ "$t" -lt 5 ] && t=5
+            ;;
+    esac
     printf '%s' "$t"
 }

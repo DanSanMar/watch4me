@@ -407,3 +407,93 @@ check_usr_10() {
         emit "$id" PASS "los ${checked} directorios home revisados tienen permisos correctos"
     fi
 }
+
+register_check \
+    'USR-11' medium 'Inicio de sesión automático y cuenta invitado' check_usr_11 \
+    'El inicio automático entra sin pedir contraseña y la cuenta invitado permite usar el equipo sin identidad. En un cliente o PC doméstico facilitan el acceso físico, pero también el uso por parte de terceros.' \
+    $'Desactiva el inicio automático y la cuenta invitado:\n  GDM:     /etc/gdm/custom.conf → AutomaticLoginEnable=false\n  SDDM:    /etc/sddm.conf → [Autologin] User=\n  LightDM: /etc/lightdm/lightdm.conf → autologin-user= y allow-guest=false\n  GNOME:   gsettings set org.gnome.login-screen allow-guest false\nDespués reinicia el gestor de sesión.'
+
+check_usr_11() {
+    local id=$CURRENT_ID
+    if [ -f /.dockerenv ]; then
+        emit "$id" INFO 'contenedor detectado: no hay gestor de sesión gráfico'
+        return
+    fi
+
+    local found=0 issues='' checked=0 f val
+    local -a files=(
+        /etc/gdm3/custom.conf /etc/gdm/custom.conf
+        /etc/sddm.conf /etc/sddm.conf.d/*.conf
+        /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/*.conf
+        /etc/lxdm/lxdm.conf
+    )
+
+    for f in "${files[@]}"; do
+        [ -r "$f" ] || continue
+        checked=$(( checked + 1 ))
+
+        # GDM
+        if grep -qiE '^[[:space:]]*AutomaticLoginEnable[[:space:]]*=[[:space:]]*(true|yes|1)[[:space:]]*$' "$f" 2>/dev/null; then
+            found=1
+            val=$(grep -iE '^[[:space:]]*AutomaticLogin[[:space:]]*=' "$f" 2>/dev/null | tail -n 1)
+            issues+="GDM inicio automático${val:+ ($(trim "$val"))} · "
+            ev "$f: $(trim "$val")"
+        fi
+
+        # SDDM: [Autologin] User=...
+        if grep -qiE '^[[:space:]]*\[Autologin\]' "$f" 2>/dev/null; then
+            val=$(awk -F= '
+                /^[[:space:]]*\[/ { sec=$0 }
+                sec ~ /\[Autologin\]/ && $1 ~ /User[[:space:]]*$/ {
+                    v=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); if (v != "") print v
+                }' "$f" 2>/dev/null | head -n 1)
+            if [ -n "$val" ]; then
+                found=1
+                issues+="SDDM inicio automático ($val) · "
+                ev "$f: Autologin User=$val"
+            fi
+        fi
+
+        # LightDM
+        if grep -qiE '^[[:space:]]*autologin-user[[:space:]]*=[[:space:]]*[^[:space:]]' "$f" 2>/dev/null; then
+            found=1
+            val=$(grep -iE '^[[:space:]]*autologin-user[[:space:]]*=' "$f" 2>/dev/null | tail -n 1)
+            issues+="LightDM inicio automático ($(trim "$val")) · "
+            ev "$f: $(trim "$val")"
+        fi
+        if grep -qiE '^[[:space:]]*allow-guest[[:space:]]*=[[:space:]]*true' "$f" 2>/dev/null; then
+            found=1
+            issues+='LightDM cuenta invitado activa · '
+            ev "$f: allow-guest=true"
+        fi
+
+        # LXDM
+        if grep -qiE '^[[:space:]]*autologin[[:space:]]*=[[:space:]]*[^[:space:]]' "$f" 2>/dev/null; then
+            found=1
+            val=$(grep -iE '^[[:space:]]*autologin[[:space:]]*=' "$f" 2>/dev/null | tail -n 1)
+            issues+="LXDM inicio automático ($(trim "$val")) · "
+            ev "$f: $(trim "$val")"
+        fi
+    done
+
+    # GNOME también permite consultar la cuenta invitado por gsettings.
+    if have gsettings; then
+        val=$(gsettings get org.gnome.login-screen allow-guest 2>/dev/null) || val=''
+        if [ "$val" = 'true' ]; then
+            found=1
+            issues+='GNOME cuenta invitado activa · '
+            ev 'gsettings: org.gnome.login-screen allow-guest=true'
+        fi
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        if [ "$checked" -eq 0 ]; then
+            emit "$id" SKIP 'no se detectó un gestor de sesión gráfico'
+        else
+            emit "$id" PASS 'sin inicio automático ni cuenta invitado'
+        fi
+        return
+    fi
+
+    emit "$id" WARN "acceso sin credenciales: ${issues% · }"
+}

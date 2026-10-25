@@ -41,16 +41,11 @@ check_int_01() {
 
 register_check \
     'INT-02' high 'Verificación de paquetes instalados' check_int_02 \
-    'Compara los ficheros instalados con los hashes del gestor de paquetes. Detecta binarios alterados o sustituidos tras la instalación. Requiere privilegios y se omite en el perfil quick.' \
+    'Compara los ficheros instalados con los hashes del gestor de paquetes. Detecta binarios alterados o sustituidos tras la instalación. Requiere privilegios y puede tardar: forma parte de los perfiles General y Servidor.' \
     $'Revisa los ficheros señalados y reinstala el paquete afectado:\n  Arch:   sudo pacman -Qkk <paquete> && sudo pacman -S <paquete>\n  Debian: sudo debsums -s && sudo apt install --reinstall <paquete>\n  RHEL:   sudo rpm -Va && sudo dnf reinstall <paquete>\nSi la alteración no la has hecho tú, investiga el sistema antes de reinstalar.'
 
 check_int_02() {
     local id=$CURRENT_ID
-    if [ "${PROFILE:-full}" = 'quick' ]; then
-        emit "$id" SKIP 'verificación completa de paquetes omitida en el perfil quick'
-        return
-    fi
-
     if [ "$PKG_MGR" != 'pacman' ] && [ "$PKG_MGR" != 'apt' ] && [ "$PKG_MGR" != 'dnf' ] && [ "$PKG_MGR" != 'zypper' ]; then
         emit "$id" SKIP "gestor de paquetes no soportado (${DISTRO_FAMILY:-desconocido})"
         return
@@ -388,10 +383,6 @@ check_int_06() {
         rd=$(readlink -f -- "$d" 2>/dev/null || printf '%s' "$d")
         [ -n "${seen_dir[$rd]:-}" ] && continue
         seen_dir[$rd]=1
-        # En quick se omite /opt para no disparar el timeout del escaneo.
-        if [ "$d" = '/opt' ] && [ "${PROFILE:-full}" = 'quick' ]; then
-            continue
-        fi
         dirs+=("$d")
     done
     if [ "${#dirs[@]}" -eq 0 ]; then
@@ -401,11 +392,10 @@ check_int_06() {
 
     local out rc t
     t=$(scan_timeout)
-    [ "${PROFILE:-full}" = 'quick' ] && t=5
     out=$(with_timeout "$t" getcap -r "${dirs[@]}" 2>/dev/null)
     rc=$?
     if [ "$rc" -eq 124 ]; then
-        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil full)'
+        emit "$id" SKIP 'escaneo interrumpido por timeout (prueba el perfil general)'
         return
     fi
     if [ -z "$out" ]; then

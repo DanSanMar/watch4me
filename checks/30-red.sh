@@ -422,3 +422,59 @@ check_net_08() {
         emit "$id" PASS 'ningún contenedor usa la red del anfitrión'
     fi
 }
+
+register_check \
+    'NET-09' high 'Seguridad de las redes Wi-Fi guardadas' check_net_09 \
+    'Una red Wi-Fi abierta o con WEP permite que cualquiera cercano lea el tráfico o se haga pasar por el punto de acceso. WPA2/WPA3 (o WPA2-Enterprise) es el mínimo razonable.' \
+    $'Olvida la red insegura y vuelve a conectarte con WPA2/WPA3:\n  nmcli connection delete "<nombre>"\n  nmcli device wifi connect "<SSID>" password "<contraseña>"\nEn el router, cambia el cifrado a WPA2/WPA3 y desactiva WPS si no lo usas.'
+
+check_net_09() {
+    local id=$CURRENT_ID
+    if ! have nmcli; then
+        emit "$id" SKIP 'NetworkManager (nmcli) no disponible'
+        return
+    fi
+
+    local out
+    out=$(nmcli -t -f NAME,TYPE connection show 2>/dev/null)
+    if [ -z "$out" ]; then
+        emit "$id" SKIP 'nmcli no devolvió conexiones guardadas'
+        return
+    fi
+
+    local name type km wifi=0 open='' weak='' strong=''
+    while IFS=: read -r name type; do
+        [ "$type" = '802-11-wireless' ] || continue
+        wifi=$(( wifi + 1 ))
+        km=$(nmcli -t -f 802-11-wireless-security.key-mgmt connection show "$name" 2>/dev/null \
+            | sed -n 's/^[^:]*:\(.*\)$/\1/p' | head -n 1)
+        case "${km,,}" in
+            ''|none)
+                open+="$name "
+                ev "$name: sin gestión de clave (abierta o WEP)"
+                ;;
+            wep)
+                weak+="$name "
+                ev "$name: WEP"
+                ;;
+            *)
+                strong+="$name "
+                ev "$name: $km"
+                ;;
+        esac
+    done <<< "$out"
+
+    if [ "$wifi" -eq 0 ]; then
+        emit "$id" SKIP 'no hay redes Wi-Fi guardadas'
+        return
+    fi
+    if [ -n "$open" ]; then
+        emit "$id" FAIL "redes Wi-Fi sin cifrado moderno: ${open% }"
+        return
+    fi
+    if [ -n "$weak" ]; then
+        emit "$id" FAIL "redes Wi-Fi con WEP: ${weak% }"
+        return
+    fi
+    emit "$id" PASS "las $wifi redes Wi-Fi guardadas usan WPA2/WPA3"
+}
