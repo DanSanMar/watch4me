@@ -107,12 +107,14 @@ WATCH4ME_NO_INSTALL=1 ./watch4me.sh menu
 
 En cada captura revisa:
 
-- **Puertos a la escucha** y si están expuestos o solo en local; los puertos de alto riesgo se marcan como aviso.
+- **Puertos a la escucha** clasificados como `expuestos`, `virtual` (puentes de libvirt, Docker o contenedores) o `local`; los puertos de alto riesgo se marcan como aviso.
 - **Conexiones TCP establecidas**, con atención a puertos remotos peligrosos, shells o intérpretes con red y binarios borrados o en rutas temporales.
 - **Procesos** con patrones de mineros o shells inversas.
 - **Servicios systemd** en estado `failed`.
 - **Persistencia**: contenido de `/etc/ld.so.preload` y cambios en ficheros críticos como `passwd`, `shadow`, `sudoers`, la configuración de SSH, `cron`, `rc.local`, claves `authorized_keys` y unidades de systemd.
 - **Cambios entre capturas**: puertos nuevos, servicios nuevos o detenidos, ficheros críticos modificados y procesos sospechosos nuevos.
+
+Un socket solo cuenta como `expuesto` si escucha en una interfaz física o en un comodín sin ámbito. Los que se atan a un puente del host (`virbr*`, `docker*`, `br-*`, `vnet*`, etc.) se muestran como `virtual`: solo los alcanzan el propio equipo y sus invitados. El ámbito `%interfaz` se conserva en la tabla (`0.0.0.0%virbr0`).
 
 La pantalla en vivo necesita TTY y color. Sin TTY, o con `--no-color`/`NO_COLOR=1`, se muestra **una única captura** con el mismo formato que `--once`; si no se pidió `--once`, se avisa por stderr. `watch` no guarda informes: para conservar un análisis usa `audit --save`.
 

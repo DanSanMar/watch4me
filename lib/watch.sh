@@ -20,6 +20,8 @@ declare -A WATCH_FINDING_SEEN=()
 
 WATCH_LISTEN_COUNT=0
 WATCH_EXPOSED_COUNT=0
+WATCH_VIRTUAL_COUNT=0
+WATCH_VIRTUAL_ADDRS=()
 WATCH_ESTAB_COUNT=0
 WATCH_SERVICE_COUNT=0
 WATCH_FILE_COUNT=0
@@ -72,23 +74,27 @@ watch_add_event() {
     watch_trim_events
 }
 
-# Convierte "addr:puerto" (IPv4, IPv6 o con %interfaz) en "addr|puerto".
+# Convierte "addr[:%interfaz]:puerto" (IPv4, IPv6 o con ámbito) en
+# "addr|puerto|interfaz". El ámbito se conserva para no confundir un socket
+# atado a un puente virtual con uno abierto a todas las interfaces.
 watch_split_hostport() {
-    local hp=$1 addr port
+    local hp=$1 addr port scope=''
     case "$hp" in
         *:*)
             port=${hp##*:}
             addr=${hp%:*}
             addr=${addr#[}
             addr=${addr%]}
-            addr=${addr%%\%*}
+            case "$addr" in
+                *%*) scope=${addr#*%}; addr=${addr%%\%*} ;;
+            esac
             ;;
         *)
             return 1
             ;;
     esac
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
-    printf '%s|%s' "${addr:-*}" "$port"
+    printf '%s|%s|%s' "${addr:-*}" "$port" "$scope"
 }
 
 watch_is_local_addr() {
@@ -96,6 +102,70 @@ watch_is_local_addr() {
         127.*|::1|::ffff:127.*|localhost) return 0 ;;
     esac
     return 1
+}
+
+# Puentes e interfaces de contenedores o máquinas virtuales: sus direcciones
+# solo son alcanzables desde el propio host y sus invitados, no desde la LAN.
+watch_is_virtual_iface() {
+    case "${1:-}" in
+        virbr*|docker*|br-*|vnet*|vboxnet*|lxcbr*|lxdbr*|cni*|podman*|kube*|flannel*|cali*|cilium*|vmnet*) return 0 ;;
+    esac
+    return 1
+}
+
+watch_is_virtual_addr() {
+    local addr=${1:-} v
+    [ -n "$addr" ] || return 1
+    for v in "${WATCH_VIRTUAL_ADDRS[@]:-}"; do
+        [ -n "$v" ] && [ "$addr" = "$v" ] && return 0
+    done
+    return 1
+}
+
+# Clasifica un socket a la escucha: local (loopback), virtual (puente del
+# host) o expuesto (interfaz física o comodín sin ámbito).
+watch_listen_kind() {
+    local addr=${1:-} scope=${2:-}
+    watch_is_local_addr "$addr" && { printf 'local'; return 0; }
+    case "$addr" in
+        ''|'*'|0.0.0.0|::)
+            if [ -n "$scope" ] && watch_is_virtual_iface "$scope"; then
+                printf 'virtual'
+            else
+                printf 'expuesto'
+            fi
+            ;;
+        *)
+            if [ -n "$scope" ]; then
+                watch_is_virtual_iface "$scope" && printf 'virtual' || printf 'expuesto'
+            elif watch_is_virtual_addr "$addr"; then
+                printf 'virtual'
+            else
+                printf 'expuesto'
+            fi
+            ;;
+    esac
+}
+
+# Direcciones del host asignadas a puentes virtuales: permiten clasificar
+# sockets que ss muestra sin el sufijo %interfaz (por ejemplo, libvirt).
+watch_load_virtual_addrs() {
+    WATCH_VIRTUAL_ADDRS=()
+    have ip || return 0
+    local iface addr
+    while read -r iface addr; do
+        [ -n "$iface" ] && [ -n "$addr" ] || continue
+        watch_is_virtual_iface "$iface" || continue
+        WATCH_VIRTUAL_ADDRS+=("$addr")
+    done < <(ip -o addr show 2>/dev/null | awk '
+        {
+            iface=$2; sub(/:$/, "", iface)
+            for (i=3; i<=NF; i++) {
+                if ($i == "inet" || $i == "inet6") {
+                    split($(i+1), a, "/"); print iface, a[1]; break
+                }
+            }
+        }')
 }
 
 watch_proc_exe() {
@@ -118,24 +188,26 @@ watch_ss() {
 }
 
 watch_collect_listen() {
-    local raw proto state laddr proc addr port exposed pname pid exe key
+    local raw proto state laddr proc addr port scope exposed virt pname pid exe key
     raw=$(watch_ss -tulpnH)
     : > "$RUN_DIR/watch.listen"
     [ -n "$raw" ] || return 0
+
+    watch_load_virtual_addrs
 
     local -A seen=()
     while IFS='|' read -r proto state laddr proc; do
         [ -n "$proto" ] || continue
         local pair
         pair=$(watch_split_hostport "$laddr") || continue
-        IFS='|' read -r addr port <<< "$pair"
+        IFS='|' read -r addr port scope <<< "$pair"
         [ -n "$port" ] || continue
 
         exposed=0
-        case "$addr" in
-            ''|'*'|0.0.0.0|::) exposed=1 ;;
-            127.*|::1|::ffff:127.*) exposed=0 ;;
-            *) exposed=1 ;;
+        virt=0
+        case "$(watch_listen_kind "$addr" "$scope")" in
+            expuesto) exposed=1 ;;
+            virtual)  virt=1 ;;
         esac
 
         pname=$(printf '%s' "$proc" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -n 1)
@@ -143,11 +215,11 @@ watch_collect_listen() {
         pname=${pname:-?}
         exe=$(watch_proc_exe "$pid")
 
-        key="$proto|$addr|$port|$pname"
+        key="$proto|$addr|$port|$scope|$pname"
         [ -n "${seen[$key]:-}" ] && continue
         seen[$key]=1
-        printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
-            "$proto" "$state" "$addr" "$port" "$exposed" "$pname" "${pid:-}" "$exe" \
+        printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            "$proto" "$state" "$addr" "$port" "$exposed" "$pname" "${pid:-}" "$exe" "$scope" "$virt" \
             >> "$RUN_DIR/watch.listen"
     done < <(printf '%s\n' "$raw" | awk '
         {
@@ -160,7 +232,7 @@ watch_collect_listen() {
 }
 
 watch_collect_estab() {
-    local raw proto state laddr peer proc lpair ppair laddr2 lport paddr pport
+    local raw proto state laddr peer proc lpair ppair laddr2 lport lscope paddr pport pscope
     local pname pid exe key
     raw=$(watch_ss -tunpH)
     : > "$RUN_DIR/watch.estab"
@@ -173,8 +245,8 @@ watch_collect_estab() {
 
         lpair=$(watch_split_hostport "$laddr") || continue
         ppair=$(watch_split_hostport "$peer") || continue
-        IFS='|' read -r laddr2 lport <<< "$lpair"
-        IFS='|' read -r paddr pport <<< "$ppair"
+        IFS='|' read -r laddr2 lport lscope <<< "$lpair"
+        IFS='|' read -r paddr pport pscope <<< "$ppair"
         [ -n "$pport" ] || continue
         case "$paddr" in
             ''|'*'|0.0.0.0|::) continue ;;
@@ -287,21 +359,21 @@ watch_collect() {
 watch_update_counts() {
     WATCH_LISTEN_COUNT=$(awk 'END { print NR + 0 }' "$RUN_DIR/watch.listen" 2>/dev/null)
     WATCH_EXPOSED_COUNT=$(awk -F'|' '$5 == 1 { n++ } END { print n + 0 }' "$RUN_DIR/watch.listen" 2>/dev/null)
+    WATCH_VIRTUAL_COUNT=$(awk -F'|' '$10 == 1 { n++ } END { print n + 0 }' "$RUN_DIR/watch.listen" 2>/dev/null)
     WATCH_ESTAB_COUNT=$(awk 'END { print NR + 0 }' "$RUN_DIR/watch.estab" 2>/dev/null)
     WATCH_SERVICE_COUNT=$(awk 'END { print NR + 0 }' "$RUN_DIR/watch.services" 2>/dev/null)
     WATCH_FILE_COUNT=$(awk 'END { print NR + 0 }' "$RUN_DIR/watch.files" 2>/dev/null)
 }
 
 watch_analyze() {
-    local proto state addr port exposed pname pid exe
+    local proto state addr port exposed pname pid exe scope virt
     local laddr peer paddr pport comm cmd unit
     WATCH_FINDINGS=()
     WATCH_FINDING_SEEN=()
 
-    while IFS='|' read -r proto state addr port exposed pname pid exe; do
+    while IFS='|' read -r proto state addr port exposed pname pid exe scope virt; do
         [ -n "$proto" ] || continue
-        [ "$exposed" -eq 1 ] || continue
-        if in_list "$port" "$WATCH_HIGH_RISK_PORTS"; then
+        if [ "$exposed" -eq 1 ] && in_list "$port" "$WATCH_HIGH_RISK_PORTS"; then
             watch_add_finding WARN "puerto de alto riesgo a la escucha: $proto/$port en $addr ($pname)"
         fi
         case "$exe" in
@@ -356,19 +428,27 @@ watch_analyze() {
     fi
 }
 
+# Clave legible para comparar puertos entre capturas: "tcp/67 en 0.0.0.0%virbr0".
+watch_listen_key() {
+    awk -F'|' 'NF >= 4 {
+        addr=$3; if ($9 != "") addr=addr "%" $9
+        print $1 "/" $4 " en " addr
+    }' "$1" 2>/dev/null | sort -u
+}
+
 watch_diff_listen() {
     local key
     [ -s "$RUN_DIR/watch.listen.prev" ] || return 0
     while IFS= read -r key; do
         [ -n "$key" ] && watch_add_event WARN "nuevo puerto a la escucha: $key"
     done < <(comm -13 \
-        <(cut -d'|' -f1-4 "$RUN_DIR/watch.listen.prev" 2>/dev/null | sort -u) \
-        <(cut -d'|' -f1-4 "$RUN_DIR/watch.listen" 2>/dev/null | sort -u))
+        <(watch_listen_key "$RUN_DIR/watch.listen.prev") \
+        <(watch_listen_key "$RUN_DIR/watch.listen"))
     while IFS= read -r key; do
         [ -n "$key" ] && watch_add_event INFO "puerto cerrado: $key"
     done < <(comm -23 \
-        <(cut -d'|' -f1-4 "$RUN_DIR/watch.listen.prev" 2>/dev/null | sort -u) \
-        <(cut -d'|' -f1-4 "$RUN_DIR/watch.listen" 2>/dev/null | sort -u))
+        <(watch_listen_key "$RUN_DIR/watch.listen.prev") \
+        <(watch_listen_key "$RUN_DIR/watch.listen"))
 }
 
 watch_diff_services() {
@@ -435,8 +515,8 @@ watch_save_prev() {
 }
 
 watch_print_listen() {
-    local proto state addr port exposed pname pid exe status n=0
-    while IFS='|' read -r proto state addr port exposed pname pid exe; do
+    local proto state addr port exposed pname pid exe scope virt status display n=0
+    while IFS='|' read -r proto state addr port exposed pname pid exe scope virt; do
         [ -n "$proto" ] || continue
         n=$(( n + 1 ))
         if [ "$n" -gt 20 ]; then
@@ -444,8 +524,14 @@ watch_print_listen() {
             break
         fi
         status='local'
-        [ "$exposed" -eq 1 ] && status='EXPUESTO'
-        printf '  %-10s %-22s %-20s %s\n' "$proto/$port" "$addr" "$pname" "$status"
+        if [ "$exposed" -eq 1 ]; then
+            status='EXPUESTO'
+        elif [ "$virt" -eq 1 ]; then
+            status='virtual'
+        fi
+        display=$addr
+        [ -n "$scope" ] && display="${addr}%${scope}"
+        printf '  %-10s %-22s %-20s %s\n' "$proto/$port" "$display" "$pname" "$status"
         case "$exe" in
             *'(deleted)'*|/tmp/*|/var/tmp/*|/dev/shm/*)
                 printf '  %s%s%s\n' "$C_DIM" "    $exe" "$C_RESET"
@@ -543,7 +629,7 @@ watch_render_events() {
 }
 
 watch_render_once() {
-    local now host
+    local now host puertos_virt=''
     host=${HOSTNAME_SHORT:-localhost}
     now=$(date '+%Y-%m-%d %H:%M:%S')
     watch_finding_counts
@@ -556,7 +642,8 @@ watch_render_once() {
         "$C_DIM" "$C_RESET" "$([ "${USE_SUDO:-0}" -eq 1 ] && printf 'sí' || printf 'no')"
     printf '%s%s%s\n' "$C_DIM" "$(_watch_rule "${UI_WIDTH:-60}")" "$C_RESET"
 
-    _watch_section "Puertos a la escucha ($WATCH_LISTEN_COUNT; $WATCH_EXPOSED_COUNT expuestos)"
+    [ "${WATCH_VIRTUAL_COUNT:-0}" -gt 0 ] && puertos_virt=" · $WATCH_VIRTUAL_COUNT virtuales"
+    _watch_section "Puertos a la escucha ($WATCH_LISTEN_COUNT; $WATCH_EXPOSED_COUNT expuestos${puertos_virt})"
     watch_print_listen
 
     _watch_section "Conexiones establecidas ($WATCH_ESTAB_COUNT)"
@@ -586,17 +673,18 @@ watch_render_once() {
 }
 
 watch_render_live() {
-    local now host exposed_list
+    local now host exposed_list virtual_txt=''
     host=${HOSTNAME_SHORT:-localhost}
     now=$(date '+%H:%M:%S')
     exposed_list=$(awk -F'|' '$5 == 1 { print $1 "/" $4 }' "$RUN_DIR/watch.listen" 2>/dev/null | paste -sd' ' -)
+    [ "${WATCH_VIRTUAL_COUNT:-0}" -gt 0 ] && virtual_txt=", $WATCH_VIRTUAL_COUNT virtuales"
     watch_finding_counts
 
     printf '\033[H\033[2J'
     printf '%sVIGILANCIA EN VIVO%s · %s · cada %ss · %s\n' \
         "$C_BOLD$C_CYAN_B" "$C_RESET" "$now" "${WATCH_INTERVAL}" "$host"
-    printf '%sEscucha:%s %d (%d expuestos) · %sEstablecidas:%s %d · %sServicios:%s %d · %sHallazgos:%s %d\n' \
-        "$C_DIM" "$C_RESET" "$WATCH_LISTEN_COUNT" "$WATCH_EXPOSED_COUNT" \
+    printf '%sEscucha:%s %d (%d expuestos%s) · %sEstablecidas:%s %d · %sServicios:%s %d · %sHallazgos:%s %d\n' \
+        "$C_DIM" "$C_RESET" "$WATCH_LISTEN_COUNT" "$WATCH_EXPOSED_COUNT" "$virtual_txt" \
         "$C_DIM" "$C_RESET" "$WATCH_ESTAB_COUNT" \
         "$C_DIM" "$C_RESET" "$WATCH_SERVICE_COUNT" \
         "$C_DIM" "$C_RESET" "$(( WATCH_CRIT_COUNT + WATCH_WARN_COUNT ))"
