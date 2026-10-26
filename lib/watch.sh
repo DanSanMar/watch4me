@@ -178,6 +178,19 @@ watch_proc_exe() {
     printf '%s' "$exe"
 }
 
+# Estado efectivo de sudo: --sudo solo cuenta si sudo -n funciona.
+watch_sudo_state() {
+    if is_root; then
+        printf 'raíz'
+    elif [ "${USE_SUDO:-0}" -ne 1 ]; then
+        printf 'no'
+    elif sudo_ok; then
+        printf 'sí'
+    else
+        printf 'no (sin caché)'
+    fi
+}
+
 # ss con privilegios si se pidieron y hay caché de sudo.
 watch_ss() {
     if [ "${USE_SUDO:-0}" -eq 1 ] && sudo_ok; then
@@ -638,8 +651,8 @@ watch_render_once() {
     printf '%sHost:%s %s · %sFecha:%s %s · %sroot:%s %s · %ssudo:%s %s\n' \
         "$C_DIM" "$C_RESET" "$host" \
         "$C_DIM" "$C_RESET" "$now" \
-        "$C_DIM" "$C_RESET" "$([ "$(id -u)" -eq 0 ] && printf 'sí' || printf 'no')" \
-        "$C_DIM" "$C_RESET" "$([ "${USE_SUDO:-0}" -eq 1 ] && printf 'sí' || printf 'no')"
+        "$C_DIM" "$C_RESET" "$(is_root && printf 'sí' || printf 'no')" \
+        "$C_DIM" "$C_RESET" "$(watch_sudo_state)"
     printf '%s%s%s\n' "$C_DIM" "$(_watch_rule "${UI_WIDTH:-60}")" "$C_RESET"
 
     [ "${WATCH_VIRTUAL_COUNT:-0}" -gt 0 ] && puertos_virt=" · $WATCH_VIRTUAL_COUNT virtuales"
@@ -746,8 +759,8 @@ watch_main() {
     if [ "${WATCH_ONCE:-0}" -eq 1 ] || [ ! -t 1 ] || [ "${UI_COLOR:-0}" -ne 1 ]; then
         WATCH_LIVE=0
     fi
-    if [ "$WATCH_LIVE" -eq 0 ] && [ "${WATCH_ONCE:-0}" -ne 1 ] && [ -t 1 ]; then
-        printf 'watch4me: la pantalla en vivo necesita color; se muestra una única captura.\n' >&2
+    if [ "$WATCH_LIVE" -eq 0 ] && [ "${WATCH_ONCE:-0}" -ne 1 ]; then
+        printf 'watch4me: sin TTY o sin color no hay pantalla en vivo; se muestra una única captura.\n' >&2
     fi
 
     local old_int old_term old_hup old_exit

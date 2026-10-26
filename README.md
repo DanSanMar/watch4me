@@ -76,7 +76,7 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 | Cliente | Perfil `cliente`: 41 checks de escritorio, Wi-Fi y cifrado |
 | PC doméstico | Perfil `domestico`: 35 checks de un equipo de casa |
 | Vistazo esencial | Perfil `esencial`: 14 checks rápidos, con timeouts de 8 s |
-| Lecturas con sudo | Activa o desactiva `sudo -n` para las próximas auditorías y para `watch` |
+| Lecturas con sudo | Activa o desactiva `sudo -n` para las próximas auditorías y para `watch`; muestra «sin caché» si no está disponible |
 | Vigilancia en vivo | Abre `watch`: puertos, conexiones, servicios y persistencia |
 | Explicar un check | Buscador por ID, título o dominio con ficha, perfiles y remedio |
 | Catálogo de checks | Los 74 checks agrupados por dominio, con sus perfiles |

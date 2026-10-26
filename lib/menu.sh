@@ -366,11 +366,22 @@ menu_ensure_fzf() {
 # Filas del menú principal
 # ---------------------------------------------------------------------------
 
+# ¿Hay caché de sudo utilizable? No se pide contraseña.
+menu_sudo_ready() {
+    is_root && return 0
+    have sudo || return 1
+    sudo -n true 2>/dev/null
+}
+
 menu_rows_main() {
     local sep sudo_state
     sep=$(menu_sep)
     if [ "${MENU_SUDO:-0}" -eq 1 ]; then
-        sudo_state='[x] activado'
+        if menu_sudo_ready; then
+            sudo_state='[x] activado'
+        else
+            sudo_state='[x] sin caché'
+        fi
     else
         sudo_state='[ ] desactivado'
     fi
@@ -740,6 +751,8 @@ menu_pv_action() {
             menu_pv_text 'ficheros críticos modificados y procesos sospechosos.'
             menu_pv_text 'Marca puertos de riesgo, binarios borrados o en rutas temporales, mineros,'
             menu_pv_text 'shells inversas, servicios failed y contenido en ld.so.preload.'
+            menu_pv_text 'Distingue puertos locales, virtuales (puentes) y expuestos; solo los'
+            menu_pv_text 'expuestos pueden generar aviso por puerto de alto riesgo.'
             menu_pv_label 'QUÉ NO HACE'
             menu_pv_text 'No es un antivirus: no bloquea, no mata procesos y no modifica el sistema.'
             menu_pv_label 'REQUISITOS'
