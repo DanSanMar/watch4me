@@ -1,11 +1,11 @@
 # 🛡 watch4me
 
-Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye **cinco perfiles** según el tipo de equipo, una **vigilancia en vivo** de conexiones, servicios, procesos y persistencia, y una **baseline de auditoría** para detectar cambios con `monitor`. También tiene un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
+Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye **cinco perfiles** según el tipo de equipo, una **vigilancia en vivo** de conexiones, servicios, procesos y persistencia, y una **baseline de auditoría** para detectar cambios con `monitor`. También tiene un **menú interactivo con fzf** (agrupado en submenús, con vista previa y ayuda) que sigue la línea de los programas *4me*.
 
-Estado actual: **M2.7 + M3 + M4 / v0.7.0** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, baseline y monitor de cambios (solo auditoría, sin timer), menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación, `explain` enriquecido, suite de pruebas y `shellcheck` limpio.
+Estado actual: **M2.7 + M3 + M4 + M5 / v0.8.0** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, baseline y monitor de cambios (solo auditoría, sin timer), menú fzf agrupado con submenús y catálogo navegable, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación, `explain` enriquecido, suite de pruebas y `shellcheck` limpio.
 
 ```text
---- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.7.0 ---
+--- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.8.0 ---
  perfil: General (74 checks) · host: arch-cosmic · distro: arch · root: no
 ```
 
@@ -71,7 +71,19 @@ Los alias antiguos siguen funcionando: `full` = `general` y `quick` = `esencial`
 
 ### Menú interactivo
 
-En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo estilo visual del resto de programas *4me*. Cada acción muestra una descripción y una **vista previa** en el panel derecho antes de ejecutarse.
+En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo estilo visual del resto de programas *4me*. El menú principal está **agrupado en submenús** para no saturar la pantalla y cada fila muestra una descripción y una **vista previa** en el panel derecho antes de ejecutarse.
+
+| Entrada principal | Qué agrupa |
+|---|---|
+| Auditorías de seguridad | Las cinco auditorías por perfil, con sus checks y tiempo estimado |
+| Historial y cambios | Crear y ver la baseline, monitorizar cambios y abrir informes guardados |
+| Vigilancia | `watch` en vivo o una sola captura |
+| Catálogo y fichas | Buscar un check, explorar por dominio o abrir el catálogo completo |
+| Lecturas con sudo | Activa o desactiva `sudo -n`; muestra «sin caché» si no está disponible |
+| Ayuda y atajos | Guía del menú, comandos directos, códigos de salida y límites |
+| Salir | Cierra el menú sin ejecutar nada |
+
+Dentro de los submenús están las acciones concretas:
 
 | Acción | Qué hace |
 |---|---|
@@ -81,18 +93,23 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 | PC doméstico | Perfil `domestico`: 35 checks de un equipo de casa |
 | Vistazo esencial | Perfil `esencial`: 14 checks rápidos, con timeouts de 8 s |
 | Crear baseline | Guarda una auditoría general como referencia en `state/baseline/<host>/` |
+| Ver baseline guardada | Muestra la referencia guardada sin ejecutar la auditoría |
 | Monitorizar cambios | Repite el perfil guardado y compara estados y score con la baseline |
-| Lecturas con sudo | Activa o desactiva `sudo -n` para las próximas auditorías, `baseline`, `monitor` y `watch`; muestra «sin caché» si no está disponible |
-| Vigilancia en vivo | Abre `watch`: puertos, conexiones, servicios y persistencia |
-| Explicar un check | Buscador por ID, título o dominio con ficha, perfiles y remedio |
-| Catálogo de checks | Los 74 checks agrupados por dominio, con sus perfiles |
 | Informes guardados | Lista y abre los `.md` y `.json` de `reports/` |
-| Ayuda y atajos | Comandos directos: `--save`, `--profile`, `watch`, `explain`… |
-| Salir | Cierra el menú sin ejecutar nada |
+| Vigilancia en vivo | Abre `watch`: puertos, conexiones, servicios y persistencia |
+| Una sola captura | Ejecuta `watch --once`: analiza, muestra el resultado y sale |
+| Explicar un check | Buscador por ID, título o dominio con ficha, perfiles y remedio |
+| Explorar por dominio | Los 8 dominios con su cobertura; después eliges el check |
+| Catálogo completo | Los 74 checks en un buscador `fzf`, agrupados por dominio |
+| Lecturas con sudo | Se aplica a auditorías, `baseline`, `monitor` y `watch` |
+| Ayuda y atajos | Comandos directos, códigos, funcionamiento del menú y seguridad |
+| Salir o Volver | Cierra el menú o vuelve un nivel sin ejecutar acciones |
 
-Cada auditoría lanzada desde el menú ofrece guardar el informe al terminar. En dos palabras: **general** es la recomendada; **servidor**, **cliente** y **doméstico** se ajustan al uso del equipo; **esencial** cambia exhaustividad por tiempo; **baseline** guarda una referencia y **monitor** avisa de cambios; **sudo** añade lecturas protegidas (activa antes la caché con `sudo -v`); **watch** vigila sin auditar.
+Cada auditoría lanzada desde el menú ofrece guardar el informe al terminar. En dos palabras: **general** es la recomendada; **servidor**, **cliente** y **doméstico** se ajustan al uso del equipo; **esencial** cambia exhaustividad por tiempo; **baseline** guarda una referencia y **monitor** avisa de cambios; **sudo** añade lecturas protegidas (activa antes la caché con `sudo -v`); **watch** vigila sin auditar; **catálogo** explica qué comprueba cada check.
 
-Teclas: escribe para filtrar, `ENTER` ejecuta, `ESC` vuelve o sale. El logo de la cabecera va cambiando de color cada 3 segundos con la misma paleta de `dash4me` mientras el menú está abierto, e incluye fecha, hora y host cuando el ancho de la terminal lo permite; en terminales estrechas cambia el subtítulo por la hora y la fecha. Al salir con `ESC`, `Ctrl-C` o la acción «Salir» se muestra un mensaje de despedida con los atajos directos.
+Teclas: escribe para filtrar, `ENTER` abre un grupo o ejecuta la fila, `ESC` vuelve un nivel y `Ctrl-C` cancela la pantalla actual. En el menú principal, `ESC` o `Ctrl-C` salen del programa y restauran la terminal. Cada submenú incluye una fila «Volver» y explica sus opciones en el panel derecho. El logo de la cabecera va cambiando de color cada 3 segundos con la misma paleta de `dash4me` mientras el menú está abierto, e incluye fecha, hora y host cuando el ancho de la terminal lo permite; en terminales estrechas cambia el subtítulo por la hora y la fecha. Al salir se muestra un mensaje de despedida con los atajos directos.
+
+El **catálogo completo** ya no se abre en un paginador externo: se navega con `fzf`, se filtra por ID, título o dominio y `ENTER` abre la ficha. Al cerrar la ficha con `ENTER` vuelve al buscador para seguir consultando; `ESC` o `Ctrl-C` vuelven al catálogo sin dejar la sesión atrapada y, desde el menú principal, `Ctrl-C` sale del programa. Los informes guardados sí usan `less`; dentro de él, `q` vuelve al menú y la línea inferior recuerda los atajos.
 
 Si `fzf` no está instalado, el menú muestra el comando de instalación para tu distribución y **pide confirmación** antes de instalar nada. Es la única acción del programa que modifica el sistema; las auditorías siguen siendo solo lectura. Para impedir esa oferta:
 
@@ -438,9 +455,10 @@ state/baseline/<host>/   baseline de auditoría (una por host)
 - **M2.5** ✅ menú interactivo con fzf, vista previa por acción y ayuda de atajos (v0.4.0)
 - **M2.6** ✅ informes Markdown + JSON, nombres sin guiones y sin sobrescrituras (v0.5.0)
 - **M2.7** ✅ cinco perfiles por tipo de equipo y vigilancia en vivo `watch` (v0.6.0)
-- **M3** ✅ baseline de auditoría y `monitor` de una sola ejecución; compara estados y score, sin timer ni notificaciones (v0.7.0)
-- **Pendiente**: notificaciones de sistema (`notify-send` / journal) y timer de usuario para `monitor`; no forman parte de M3
 - **M4** ✅ documentación, tests y `shellcheck` limpio (v0.6.1, adelantado a M3)
+- **M3** ✅ baseline de auditoría y `monitor` de una sola ejecución; compara estados y score, sin timer ni notificaciones (v0.7.0)
+- **M5** ✅ menú principal agrupado en submenús, ayudas ampliadas y catálogo navegable con fzf sin paginador externo (v0.8.0)
+- **Pendiente**: notificaciones de sistema (`notify-send` / journal) y timer de usuario para `monitor`; no forman parte de M3
 
 ## Licencia
 

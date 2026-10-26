@@ -784,7 +784,7 @@ test_menu_sudo_row() {
     . "$ROOT/lib/menu.sh"
     ui_init
 
-    menu_row() { printf '%s\n' "$1"; }
+    menu_row() { printf '%s\t%s\n' "$1" "$2"; }
     menu_sep() { printf '·'; }
 
     MENU_SUDO=0
@@ -792,14 +792,80 @@ test_menu_sudo_row() {
     local rows
     rows=$(menu_rows_main)
     assert_contains "$rows" '[ ] desactivado' || return 1
-    assert_contains "$rows" 'Crear baseline' || return 1
-    assert_contains "$rows" 'Monitorizar cambios' || return 1
+    assert_contains "$rows" 'Auditorías de seguridad' || return 1
+    assert_contains "$rows" 'Historial y cambios' || return 1
+    assert_contains "$rows" 'Catálogo y fichas' || return 1
+    # Las acciones concretas viven en los submenús, no en el principal.
+    assert_not_contains "$rows" 'Crear baseline' || return 1
+    assert_not_contains "$rows" 'Monitorizar cambios' || return 1
 
     MENU_SUDO=1
     assert_contains "$(menu_rows_main)" '[x] sin caché' || return 1
 
     menu_sudo_ready() { return 0; }
     assert_contains "$(menu_rows_main)" '[x] activado' || return 1
+}
+
+test_menu_groups() {
+    load_catalog
+    # shellcheck source=../lib/ui.sh
+    . "$ROOT/lib/ui.sh"
+    # shellcheck source=../lib/menu.sh
+    . "$ROOT/lib/menu.sh"
+    ui_init
+
+    menu_row() { printf '%s\t%s\n' "$1" "$2"; }
+    menu_sep() { printf '·'; }
+    menu_sudo_ready() { return 1; }
+
+    local rows lines
+    rows=$(menu_rows_main)
+    lines=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
+    assert_eq "$lines" '7' || return 1
+
+    lines=$(menu_rows_audits | wc -l | tr -d ' ')
+    assert_eq "$lines" '6' || return 1
+    assert_contains "$(menu_rows_audits)" $'audit-general' || return 1
+    assert_contains "$(menu_rows_audits)" $'audit-esencial' || return 1
+    assert_contains "$(menu_rows_audits)" $'back' || return 1
+
+    assert_eq "$(menu_rows_history | wc -l | tr -d ' ')" '5' || return 1
+    assert_contains "$(menu_rows_history)" $'baseline-show' || return 1
+    assert_contains "$(menu_rows_history)" $'reports' || return 1
+
+    assert_eq "$(menu_rows_watch | wc -l | tr -d ' ')" '3' || return 1
+    assert_contains "$(menu_rows_watch)" $'watch-once' || return 1
+
+    assert_eq "$(menu_rows_catalog | wc -l | tr -d ' ')" '4' || return 1
+    assert_contains "$(menu_rows_catalog)" $'catalog-domains' || return 1
+    assert_contains "$(menu_rows_catalog)" $'catalog-all' || return 1
+
+    assert_eq "$(menu_rows_domains | wc -l | tr -d ' ')" '9' || return 1
+    assert_contains "$(menu_rows_domains)" $'domain-SYS' || return 1
+    assert_contains "$(menu_rows_domains)" $'domain-MAL' || return 1
+
+    # El catálogo completo sigue teniendo los 74 checks, agrupados por dominio.
+    rows=$(menu_rows_checks)
+    assert_eq "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" '74' || return 1
+    assert_contains "$(printf '%s\n' "$rows" | head -n 1)" 'SYS-01' || return 1
+    assert_contains "$(printf '%s\n' "$rows" | tail -n 1)" 'MAL-07' || return 1
+
+    # Cada grupo y cada acción nueva tiene una vista previa que la explica.
+    local id out
+    for id in audit-profiles history watch-menu catalog-menu baseline-show \
+        watch-once catalog-domains catalog-all back; do
+        out=$("$SCRIPT" __preview action "$id" 2>&1)
+        assert_exit "$?" 0 || return 1
+        assert_not_contains "$out" 'Acción desconocida' || return 1
+    done
+    out=$("$SCRIPT" __preview domain domain-SYS 2>&1)
+    assert_contains "$out" 'DOMINIO Sistema' || return 1
+    assert_contains "$out" 'SYS-01' || return 1
+    out=$("$SCRIPT" __preview check back 2>&1)
+    assert_contains "$out" 'VOLVER' || return 1
+    out=$(WATCH4ME_PREVIEW_SUDO=1 "$SCRIPT" __preview action audit-general 2>&1)
+    assert_contains "$out" 'Activado' || return 1
+    assert_contains "$out" '--sudo' || return 1
 }
 
 test_cli_basic() {
@@ -1030,6 +1096,7 @@ main() {
         test_baseline_compare \
         test_baseline_cli \
         test_menu_sudo_row \
+        test_menu_groups \
         test_cli_basic \
         test_explain \
         test_menu_no_tty \

@@ -164,7 +164,7 @@ ui_line1() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.7.0}"
+    ver="v${VERSION:-0.8.0}"
 
     local line=""
     local show_ver=1
@@ -220,7 +220,7 @@ ui_line1_static() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.7.0}"
+    ver="v${VERSION:-0.8.0}"
 
     local line=""
     local show_ver=1

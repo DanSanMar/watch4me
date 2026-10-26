@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.7.0'
+VERSION='0.8.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -132,6 +132,23 @@ MENÚ
   la distribución tras confirmación explícita. Es la única acción del
   programa que modifica el sistema; las auditorías son solo lectura.
   Para desactivar esa oferta: WATCH4ME_NO_INSTALL=1 ./watch4me.sh menu
+
+  El menú principal está agrupado para no saturar la pantalla:
+    Auditorías          cinco perfiles (general, servidor, cliente,
+                        PC doméstico y esencial)
+    Historial y cambios baseline, monitor e informes guardados
+    Vigilancia          watch en vivo o una sola captura
+    Catálogo y fichas   buscar un check, explorar por dominio o ver
+                        el catálogo completo
+    Lecturas con sudo   activa o desactiva sudo -n para las acciones
+    Ayuda y atajos      guía del menú, comandos y seguridad
+
+  Teclas: escribe para filtrar, ENTER abre un grupo o ejecuta y ESC
+  vuelve al nivel anterior (en el menú principal sale). Ctrl-C cancela
+  la pantalla actual; desde el menú principal sale y restaura la
+  terminal. El panel derecho explica cada opción antes de ejecutarla.
+  El catálogo completo se abre en un buscador fzf: ESC o Ctrl-C vuelven
+  y no usa un paginador externo.
 
 EJEMPLOS
   ./watch4me.sh
