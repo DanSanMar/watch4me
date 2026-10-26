@@ -7,6 +7,9 @@
 #
 # Licencia: GPLv3
 
+# Variables compartidas con watch4me.sh y las librerías de checks.
+# shellcheck disable=SC2034
+
 MENU_TAB=$'\t'
 MENU_LOGO_PID=''
 MENU_LOGO_TICKS=${MENU_LOGO_TICKS:-15}   # 15 x 0,2 s = cambio de color cada 3 s

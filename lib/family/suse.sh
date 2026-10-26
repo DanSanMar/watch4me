@@ -2,6 +2,9 @@
 # watch4me — adaptador openSUSE / SLES
 # Licencia: GPLv3
 
+# FAMILY_LABEL y PKG_MGR los consume lib/distro.sh.
+# shellcheck disable=SC2034
+
 FAMILY_LABEL='openSUSE/SLES'
 PKG_MGR='zypper'
 

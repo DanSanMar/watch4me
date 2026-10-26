@@ -2,10 +2,10 @@
 
 Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye **cinco perfiles** según el tipo de equipo y una **vigilancia en vivo** de conexiones, servicios, procesos y persistencia. También tiene un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
 
-Estado actual: **M2.7 / v0.6.0** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación y `explain` enriquecido.
+Estado actual: **M2.7 + M4 / v0.6.1** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación, `explain` enriquecido, suite de pruebas y `shellcheck` limpio.
 
 ```text
---- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.6.0 ---
+--- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.6.1 ---
  perfil: General (74 checks) · host: arch-cosmic · distro: arch · root: no
 ```
 
@@ -331,7 +331,7 @@ Si una capacidad no existe, el check sale `SKIP`, nunca `FAIL` falso.
 WATCH4ME_ALLOW_PORTS="22 443 8080" ./watch4me.sh audit
 ```
 
-Los puertos de alto riesgo (21, 23, 445, 3389, 5900, 6379, 27017…) marcan `FAIL`. `watch` usa su propia lista de puertos peligrosos y no lee esta variable.
+Los puertos de alto riesgo (21, 23, 445, 3389, 5900, 6379, 27017…) marcan `FAIL`. `watch` usa su propia lista de puertos peligrosos y no lee esta variable. `NET-01` comparte con `watch` la clasificación de sockets: loopback y puentes virtuales (`virbr*`, `docker*`, `br-*`, `vnet*`…) no cuentan como expuestos.
 
 ## Seguridad del propio script
 
@@ -341,6 +341,22 @@ Los puertos de alto riesgo (21, 23, 445, 3389, 5900, 6379, 27017…) marcan `FAI
 - No usa `eval` ni ejecuta contenido de ficheros analizados.
 - Con `--sudo` solo ejecuta lecturas (`cat`, `stat`, `ss`, `find`, `readlink`, `grep`, `getcap`, `modinfo`, `nft list`, `iptables -S`, `sshd -T`, `pacman -Qkk`, `debsums -s`, `rpm -Va`) mediante `sudo -n`.
 - No pide contraseña durante la auditoría ni la vigilancia: si `sudo -n` falla, el check se omite con `SKIP` o se muestra menos información.
+
+## Pruebas
+
+La suite no necesita dependencias nuevas, crea su propio directorio temporal y no toca `reports/`:
+
+```sh
+./tests/run-tests.sh
+```
+
+Cubre catálogo, perfiles, scoring, contrato de checks, clasificación de `watch` y `NET-01`, menú, CLI e informes. Si `shellcheck` está disponible, se ejecuta como una prueba más; también se puede indicar su ruta:
+
+```sh
+SHELLCHECK=/ruta/a/shellcheck ./tests/run-tests.sh
+```
+
+La suite omite `shellcheck` si no está instalado. Se validó con el binario estático 0.10.0.
 
 ## Estructura
 
@@ -358,6 +374,7 @@ lib/render-term.sh       salida en pantalla
 lib/render-md.sh         informe Markdown
 lib/render-json.sh       informe JSON estructurado
 checks/*.sh              74 checks en 8 dominios
+tests/run-tests.sh       suite de regresión (Bash puro)
 reports/                 informes generados
 state/                   estado interno (futuro baseline)
 ```
@@ -370,7 +387,7 @@ state/                   estado interno (futuro baseline)
 - **M2.6** ✅ informes Markdown + JSON, nombres sin guiones y sin sobrescrituras (v0.5.0)
 - **M2.7** ✅ cinco perfiles por tipo de equipo y vigilancia en vivo `watch` (v0.6.0)
 - **M3** baseline + `monitor` con notificación de sistema (`notify-send` / journal) y timer de usuario
-- **M4** documentación, tests y `shellcheck` limpio
+- **M4** ✅ documentación, tests y `shellcheck` limpio (v0.6.1, adelantado a M3)
 
 ## Licencia
 

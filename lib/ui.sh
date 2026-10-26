@@ -7,6 +7,9 @@
 #
 # Licencia: GPLv3
 
+# Variables compartidas con watch4me.sh y los renderizadores.
+# shellcheck disable=SC2034
+
 UI_COLOR=0
 UI_ANIM=0
 UI_UTF8=0
@@ -74,7 +77,6 @@ ui_init() {
         C_GREEN_B=$'\e[92m'
         C_YELLOW=$'\e[33m'
         C_YELLOW_B=$'\e[93m'
-        C_BLUE=$'\e[34m'
         C_BLUE_B=$'\e[94m'
         C_BLUE_LIGHT=$'\e[38;5;117m'
         C_CYAN=$'\e[36m'
@@ -83,7 +85,7 @@ ui_init() {
         C_MAGENTA_B=$'\e[95m'
     else
         C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_RED_B='' C_GREEN='' C_GREEN_B=''
-        C_YELLOW='' C_YELLOW_B='' C_BLUE='' C_BLUE_B='' C_BLUE_LIGHT=''
+        C_YELLOW='' C_YELLOW_B='' C_BLUE_B='' C_BLUE_LIGHT=''
         C_CYAN='' C_CYAN_B=''
         C_WHITE='' C_MAGENTA_B=''
     fi
@@ -162,7 +164,7 @@ ui_line1() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.6.0}"
+    ver="v${VERSION:-0.6.1}"
 
     local line=""
     local show_ver=1
@@ -218,7 +220,7 @@ ui_line1_static() {
         subtitle='AUDITORIA DE SEGURIDAD'
     fi
     logo='WATCH4ME'
-    ver="v${VERSION:-0.6.0}"
+    ver="v${VERSION:-0.6.1}"
 
     local line=""
     local show_ver=1
@@ -378,7 +380,7 @@ ui_frame() {
 ui_header_close() {
     if [ "$UI_HEADER_OPEN" -eq 1 ]; then
         printf '\r\e[1A'
-        printf '\e[K%s\n' "$(ui_line1_static)"
+        printf '\e[K%s\n' "$(ui_line1_static '')"
         printf '\e[K%s' "$(ui_line2_static)"
         printf '\n'
         UI_HEADER_OPEN=0
@@ -389,7 +391,7 @@ ui_header_close() {
 
 # Cabecera plana para cuando no hay animación.
 ui_header_plain() {
-    printf '%s\n%s\n\n' "$(ui_line1_static)" "$(ui_line2_static)"
+    printf '%s\n%s\n\n' "$(ui_line1_static '')" "$(ui_line2_static)"
 }
 
 ui_restore() {

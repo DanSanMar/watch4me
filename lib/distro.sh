@@ -2,6 +2,9 @@
 # watch4me — detección de distribución y carga del adaptador de familia
 # Licencia: GPLv3
 
+# FAMILY_LABEL, PKG_MGR y DISTRO_NAME los consumen otros módulos.
+# shellcheck disable=SC2034
+
 DISTRO_ID=unknown
 DISTRO_LIKE=''
 DISTRO_NAME='unknown'

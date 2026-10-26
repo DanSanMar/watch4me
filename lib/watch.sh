@@ -15,8 +15,8 @@ WATCH_SCREEN=0
 WATCH_FIRST=1
 WATCH_EVENTS=()
 WATCH_FINDINGS=()
-declare -A WATCH_EVENT_SEEN=()
-declare -A WATCH_FINDING_SEEN=()
+declare -g -A WATCH_EVENT_SEEN=()
+declare -g -A WATCH_FINDING_SEEN=()
 
 WATCH_LISTEN_COUNT=0
 WATCH_EXPOSED_COUNT=0
@@ -154,7 +154,9 @@ watch_load_virtual_addrs() {
     have ip || return 0
     local iface addr
     while read -r iface addr; do
-        [ -n "$iface" ] && [ -n "$addr" ] || continue
+        if [ -z "$iface" ] || [ -z "$addr" ]; then
+            continue
+        fi
         watch_is_virtual_iface "$iface" || continue
         WATCH_VIRTUAL_ADDRS+=("$addr")
     done < <(ip -o addr show 2>/dev/null | awk '
@@ -245,7 +247,7 @@ watch_collect_listen() {
 }
 
 watch_collect_estab() {
-    local raw proto state laddr peer proc lpair ppair laddr2 lport lscope paddr pport pscope
+    local raw proto state laddr peer proc lpair ppair laddr2 lport paddr pport
     local pname pid exe key
     raw=$(watch_ss -tunpH)
     : > "$RUN_DIR/watch.estab"
@@ -258,8 +260,8 @@ watch_collect_estab() {
 
         lpair=$(watch_split_hostport "$laddr") || continue
         ppair=$(watch_split_hostport "$peer") || continue
-        IFS='|' read -r laddr2 lport lscope <<< "$lpair"
-        IFS='|' read -r paddr pport pscope <<< "$ppair"
+        IFS='|' read -r laddr2 lport _ <<< "$lpair"
+        IFS='|' read -r paddr pport _ <<< "$ppair"
         [ -n "$pport" ] || continue
         case "$paddr" in
             ''|'*'|0.0.0.0|::) continue ;;
@@ -483,7 +485,7 @@ watch_diff_files() {
         case "$kind" in
             new)     watch_add_event WARN "fichero crítico nuevo: $path" ;;
             removed) watch_add_event WARN "fichero crítico eliminado: $path" ;;
-            changed) watch_add_event WARN "fichero crítico modificado: $path" ;;
+            changed) watch_add_event WARN "fichero crítico modificado: $path (${old:-?} -> ${new:-?} bytes)" ;;
         esac
     done < <(awk -F'|' '
         NR == FNR { old[$1]=$0; next }
@@ -492,7 +494,7 @@ watch_diff_files() {
                 if (old[$1] != $0) {
                     split(old[$1], o, "|")
                     split($0, n, "|")
-                    print "changed|" $1 "|" o[2] "|" n[2]
+                    print "changed|" $1 "|" o[3] "|" n[3]
                 }
                 delete old[$1]
             } else {
@@ -521,7 +523,7 @@ watch_diff() {
 }
 
 watch_save_prev() {
-    local f base
+    local f
     for f in listen estab services files procs; do
         cp -f -- "$RUN_DIR/watch.$f" "$RUN_DIR/watch.$f.prev" 2>/dev/null || true
     done
@@ -787,10 +789,26 @@ watch_main() {
         old_term=${old_term:-}
         old_hup=${old_hup:-}
         old_exit=${old_exit:-}
-        [ -n "$old_int" ] && eval "$old_int" || trap - INT
-        [ -n "$old_term" ] && eval "$old_term" || trap - TERM
-        [ -n "$old_hup" ] && eval "$old_hup" || trap - HUP
-        [ -n "$old_exit" ] && eval "$old_exit" || trap - EXIT
+        if [ -n "$old_int" ]; then
+            eval "$old_int"
+        else
+            trap - INT
+        fi
+        if [ -n "$old_term" ]; then
+            eval "$old_term"
+        else
+            trap - TERM
+        fi
+        if [ -n "$old_hup" ]; then
+            eval "$old_hup"
+        else
+            trap - HUP
+        fi
+        if [ -n "$old_exit" ]; then
+            eval "$old_exit"
+        else
+            trap - EXIT
+        fi
         watch_exit_code
         return $?
     fi
@@ -815,9 +833,25 @@ watch_main() {
     printf '\n%sVigilancia detenida%s · %d hallazgo(s) en la última captura · %d evento(s) registrado(s)\n' \
         "$C_BOLD$C_CYAN_B" "$C_RESET" "$(( WATCH_CRIT_COUNT + WATCH_WARN_COUNT ))" "${#WATCH_EVENTS[@]}"
 
-    [ -n "$old_int" ] && eval "$old_int" || trap - INT
-    [ -n "$old_term" ] && eval "$old_term" || trap - TERM
-    [ -n "$old_hup" ] && eval "$old_hup" || trap - HUP
-    [ -n "$old_exit" ] && eval "$old_exit" || trap - EXIT
+    if [ -n "$old_int" ]; then
+        eval "$old_int"
+    else
+        trap - INT
+    fi
+    if [ -n "$old_term" ]; then
+        eval "$old_term"
+    else
+        trap - TERM
+    fi
+    if [ -n "$old_hup" ]; then
+        eval "$old_hup"
+    else
+        trap - HUP
+    fi
+    if [ -n "$old_exit" ]; then
+        eval "$old_exit"
+    else
+        trap - EXIT
+    fi
     return 0
 }

@@ -252,7 +252,7 @@ check_sys_05() {
         local blocked=0 f
         for f in "${confs[@]}"; do
             [ -r "$f" ] || continue
-            if grep -Eq "^[[:space:]]*(blacklist[[:space:]]+$m|install[[:space:]]+$m[[:space:]]+/bin/(false|true))" "$f"; then
+            if grep -Eq "^[[:space:]]*(blacklist[[:space:]]+${m}|install[[:space:]]+${m}[[:space:]]+/bin/(false|true))" "$f"; then
                 blocked=1
             fi
         done
@@ -318,7 +318,7 @@ check_sys_07() {
     fi
     if [ -z "$state" ]; then
         local var
-        var=$(ls /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | head -n 1)
+        var=$(find /sys/firmware/efi/efivars -maxdepth 1 -name 'SecureBoot-*' -print -quit 2>/dev/null)
         if [ -n "$var" ] && [ -r "$var" ]; then
             local b
             b=$(od -An -tu1 -j4 -N1 "$var" 2>/dev/null | tr -d ' ')

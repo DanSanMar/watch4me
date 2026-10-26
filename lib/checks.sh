@@ -2,16 +2,19 @@
 # watch4me — registro de checks, estado y puntuación
 # Licencia: GPLv3
 
-declare -a CHECK_IDS=()
-declare -a ACTIVE_CHECK_IDS=()
-declare -A CHECK_SEVERITY=()
-declare -A CHECK_TITLE=()
-declare -A CHECK_FUNC=()
-declare -A CHECK_DESC=()
-declare -A CHECK_REMED=()
-declare -A CHECK_DOMAIN=()
+# Variables y tablas que consumen los renderizadores, explain y el menú.
+# shellcheck disable=SC2034
 
-declare -A SEV_WEIGHT=(
+declare -g -a CHECK_IDS=()
+declare -g -a ACTIVE_CHECK_IDS=()
+declare -g -A CHECK_SEVERITY=()
+declare -g -A CHECK_TITLE=()
+declare -g -A CHECK_FUNC=()
+declare -g -A CHECK_DESC=()
+declare -g -A CHECK_REMED=()
+declare -g -A CHECK_DOMAIN=()
+
+declare -g -A SEV_WEIGHT=(
     [critical]=10
     [high]=7
     [medium]=4
@@ -19,7 +22,7 @@ declare -A SEV_WEIGHT=(
     [info]=0
 )
 
-declare -A DOMAIN_NAME=(
+declare -g -A DOMAIN_NAME=(
     [SYS]='Sistema'
     [USR]='Usuarios'
     [NET]='Red'
@@ -31,17 +34,17 @@ declare -A DOMAIN_NAME=(
 )
 
 # shellcheck disable=SC2034 # usado por los renderizadores
-declare -A COUNT=([PASS]=0 [WARN]=0 [FAIL]=0 [SKIP]=0 [INFO]=0)
+declare -g -A COUNT=([PASS]=0 [WARN]=0 [FAIL]=0 [SKIP]=0 [INFO]=0)
 GLOBAL_SCORE=100
 TOTAL_POSSIBLE=0
 TOTAL_PENALTY=0
-declare -A DOMAIN_SCORE=()
-declare -A DOMAIN_POSSIBLE=()
-declare -A DOMAIN_PENALTY=()
-declare -A DOMAIN_TOTAL=()
-declare -A DOMAIN_FAIL=()
-declare -A DOMAIN_WARN=()
-declare -A DOMAIN_SKIP=()
+declare -g -A DOMAIN_SCORE=()
+declare -g -A DOMAIN_POSSIBLE=()
+declare -g -A DOMAIN_PENALTY=()
+declare -g -A DOMAIN_TOTAL=()
+declare -g -A DOMAIN_FAIL=()
+declare -g -A DOMAIN_WARN=()
+declare -g -A DOMAIN_SKIP=()
 
 register_check() {
     local id=$1 sev=$2 title=$3 func=$4 desc=${5:-} remed=${6:-}
@@ -192,7 +195,7 @@ evidence_of() {
 }
 
 compute_scores() {
-    local id sev st w dom p possible penalty
+    local id sev st w dom possible penalty
     local -a ids=("${ACTIVE_CHECK_IDS[@]}")
     [ "${#ids[@]}" -gt 0 ] || ids=("${CHECK_IDS[@]}")
     COUNT[PASS]=0 COUNT[WARN]=0 COUNT[FAIL]=0 COUNT[SKIP]=0 COUNT[INFO]=0

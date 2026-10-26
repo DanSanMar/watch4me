@@ -76,7 +76,7 @@ render_json() {
 
     printf '  "tool": {\n'
     printf '    "name": "watch4me",\n'
-    printf '    "version": %s,\n' "$(_json_str "${VERSION:-0.6.0}")"
+    printf '    "version": %s,\n' "$(_json_str "${VERSION:-0.6.1}")"
     printf '    "license": "GPLv3"\n'
     printf '  },\n'
 

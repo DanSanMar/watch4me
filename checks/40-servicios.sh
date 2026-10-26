@@ -317,7 +317,6 @@ check_svc_07() {
         return
     fi
 
-    local getv
     getv() {
         local key=$1 val
         val=$(printf '%s\n' "$eff" | awk -v k="$key" 'tolower($1) == tolower(k) { print tolower($2); exit }')

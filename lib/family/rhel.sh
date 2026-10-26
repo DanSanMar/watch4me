@@ -2,6 +2,9 @@
 # watch4me — adaptador Fedora / RHEL / derivados
 # Licencia: GPLv3
 
+# FAMILY_LABEL y PKG_MGR los consume lib/distro.sh.
+# shellcheck disable=SC2034
+
 FAMILY_LABEL='Fedora/RHEL'
 PKG_MGR='dnf'
 

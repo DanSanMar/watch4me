@@ -29,39 +29,39 @@ check_net_01() {
     parsed=$(printf '%s\n' "$raw" | awk '
         {
             proto = $1
-            local = $5
+            laddr = $5
             proc = ""
             for (i = 7; i <= NF; i++) proc = proc (i > 7 ? " " : "") $i
-
-            if (match(local, /:[0-9]+$/) == 0) next
-            port = substr(local, RSTART + 1)
-            addr = substr(local, 1, RSTART - 1)
-
-            exposed = (addr == "0.0.0.0" || addr == "*" || addr == "[::]" || addr == "::" || addr == "" \
-                || (addr !~ /^127\./ && addr !~ /^\[?::1\]?$/ && addr !~ /^\[?::ffff:127\./))
-            if (!exposed) next
-
+            if (laddr == "") next
             gsub(/\t/, " ", proc)
-            print proto "/" port "\t" addr "\t" proc
+            print proto "\t" laddr "\t" proc
         }')
 
     if [ -z "$parsed" ]; then
-        emit "$id" PASS 'ningún socket accesible fuera de loopback'
+        emit "$id" SKIP 'ss no devolvió información'
         return
     fi
 
     local allow=" ${WATCH4ME_ALLOW_PORTS:-22} "
     local high_risk=' 21 23 69 111 135 139 445 512 513 514 1433 1521 2375 2376 3306 3389 5432 5900 5901 6379 9200 11211 27017 '
     local -A seen=()
-    local proto_port addr proc port
+    local proto laddr proc pair proto_port addr port scope
     local exposed='' risky='' allowed='' n_exposed=0 n_risky=0 n_allowed=0
 
-    while IFS=$'\t' read -r proto_port addr proc; do
-        [ -n "$proto_port" ] || continue
+    # Misma clasificación que watch: loopback y puentes virtuales no cuentan
+    # como superficie expuesta a la LAN.
+    watch_load_virtual_addrs
+    while IFS=$'\t' read -r proto laddr proc; do
+        [ -n "$proto" ] || continue
+        pair=$(watch_split_hostport "$laddr") || continue
+        IFS='|' read -r addr port scope <<< "$pair"
+        [ -n "$port" ] || continue
+        [ "$(watch_listen_kind "$addr" "$scope")" = 'expuesto' ] || continue
+
+        proto_port="$proto/$port"
         [ -n "${seen[$proto_port]:-}" ] && continue
         seen[$proto_port]=1
 
-        port=${proto_port##*/}
         local label="$proto_port"
         if [ -n "$proc" ] && [ "$proc" != '-' ]; then
             local pname

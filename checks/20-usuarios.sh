@@ -253,8 +253,8 @@ check_usr_07() {
         fi
     done < /etc/passwd
 
-    local user hash last min max warn inactive expire n=0 bad=''
-    while IFS=: read -r user hash last min max warn inactive expire; do
+    local user hash _ _ max _ inactive _ n=0 bad=''
+    while IFS=: read -r user hash _ _ max _ inactive _; do
         [ -n "${human[$user]:-}" ] || continue
         case "$hash" in ''|'!'*|'*'*) continue ;; esac
 
@@ -373,7 +373,9 @@ check_usr_10() {
 
     for u in $(interactive_users); do
         home=$(user_home "$u")
-        [ -n "$home" ] && [ -d "$home" ] || continue
+        if [ -z "$home" ] || [ ! -d "$home" ]; then
+            continue
+        fi
         st=$(stat -c '%a %U' "$home" 2>/dev/null) || continue
         checked=$(( checked + 1 ))
         mode=${st%% *}

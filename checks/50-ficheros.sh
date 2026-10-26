@@ -89,7 +89,7 @@ check_fs_01() {
         return
     fi
 
-    local m mounted missing='' ok=0
+    local m missing='' ok=0
     for m in /tmp /var /var/log /var/tmp /home /boot; do
         [ -d "$m" ] || continue
         local target

@@ -328,7 +328,7 @@ check_int_05() {
 
     if ! as_root test -e "$ak" 2>/dev/null; then
         if [ -n "$bad" ]; then
-            emit "$id" WARN "~/.ssh de root con permisos débiles: ${bad% }"
+            emit "$id" WARN "/root/.ssh con permisos débiles: ${bad% }"
         else
             emit "$id" PASS 'root no tiene claves autorizadas'
         fi

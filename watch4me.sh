@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.6.0'
+VERSION='0.6.1'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -435,7 +435,8 @@ maybe_save() {
     if [ -n "$SAVE_TO" ]; then
         base=$(resolve_report_base "$SAVE_TO")
     elif [ -t 0 ] && [ -t 1 ]; then
-        local suggested="reports/$(report_base_name)"
+        local suggested
+        suggested="reports/$(report_base_name)"
         local ans=''
         printf '\n'
         read -r -p "¿Guardar informes en ${suggested}.md y .json? [s/N] " ans || ans=''

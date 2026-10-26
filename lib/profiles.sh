@@ -7,6 +7,9 @@
 #
 # Licencia: GPLv3
 
+# PROFILE_LABEL y PROFILE_DESC los consumen los renderizadores.
+# shellcheck disable=SC2034
+
 PROFILE='general'
 PROFILE_LABEL='General'
 PROFILE_DESC='Auditoría completa: todos los dominios y todos los checks.'
@@ -47,7 +50,7 @@ MAL-01 MAL-02 MAL-03 MAL-04 MAL-05
 '
 
 # Etiquetas cortas para el catálogo y las fichas.
-declare -A PROFILE_SHORT_LABEL=(
+declare -g -A PROFILE_SHORT_LABEL=(
     [general]='G'
     [servidor]='S'
     [cliente]='C'
@@ -55,7 +58,7 @@ declare -A PROFILE_SHORT_LABEL=(
     [esencial]='E'
 )
 
-declare -a PROFILE_EXCLUDED_IDS=()
+declare -g -a PROFILE_EXCLUDED_IDS=()
 
 profile_label() {
     case "${1:-general}" in

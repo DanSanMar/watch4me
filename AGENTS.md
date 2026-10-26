@@ -1,6 +1,6 @@
 # AGENTS.md — watch4me
 
-Auditoría de seguridad local en Bash, **solo lectura**, multi-distro. Estado actual: **M2.7 / v0.6.0** (74 checks, 8 dominios, cinco perfiles, vigilancia en vivo `watch`, menú fzf con vista previa, informes Markdown + JSON, resumen ejecutivo y guía de actuación). Repo: rama `Security-Scripts-Bash`, remoto `DanSanMar/watch4me`.
+Auditoría de seguridad local en Bash, **solo lectura**, multi-distro. Estado actual: **M2.7 + M4 / v0.6.1** (74 checks, 8 dominios, cinco perfiles, vigilancia en vivo `watch`, menú fzf con vista previa, informes Markdown + JSON, resumen ejecutivo, guía de actuación, suite de pruebas y `shellcheck` limpio). Repo: rama `Security-Scripts-Bash`, remoto `DanSanMar/watch4me`.
 
 ## Invariantes (no romper)
 
@@ -24,7 +24,7 @@ Auditoría de seguridad local en Bash, **solo lectura**, multi-distro. Estado ac
 
 - `lib/checks.sh`: registro, estado en `$RUN_DIR/ID.status|detail|evidence`, scoring, exit codes e iconos. Scoring y exit code usan `ACTIVE_CHECK_IDS` con caída al catálogo si aún no se ha aplicado un perfil.
 - `lib/profiles.sh`: definición de perfiles (`PROFILE_ESENCIAL`, `PROFILE_SERVIDOR_EXCLUDE`, `PROFILE_CLIENTE_EXCLUDE`, `PROFILE_DOMESTICO`), alias, etiquetas, `profile_applies`, `profile_tags`, `profile_select`, `profile_count` y `profile_set`. Las listas son multilínea y `in_list` las trata como separadores.
-- `lib/watch.sh`: capturas con `ss -tulpnH` / `ss -tunpH`, `systemctl`, `stat` y `/proc`. Vigila puertos, conexiones, servicios, procesos y ficheros críticos; genera hallazgos y eventos de cambio. Los sockets en loopback o en puentes virtuales del host (`virbr*`, `docker*`, `br-*`, `vnet*`…) se etiquetan `local`/`virtual` y no cuentan como expuestos; se conserva el ámbito `%interfaz`. La pantalla en vivo exige TTY y color (`WATCH_LIVE`); sin ello hace una captura única y avisa por stderr. No guarda informes.
+- `lib/watch.sh`: capturas con `ss -tulpnH` / `ss -tunpH`, `systemctl`, `stat` y `/proc`. Vigila puertos, conexiones, servicios, procesos y ficheros críticos; genera hallazgos y eventos de cambio. Los sockets en loopback o en puentes virtuales del host (`virbr*`, `docker*`, `br-*`, `vnet*`…) se etiquetan `local`/`virtual` y no cuentan como expuestos; se conserva el ámbito `%interfaz`. `NET-01` reutiliza esta clasificación. La pantalla en vivo exige TTY y color (`WATCH_LIVE`); sin ello hace una captura única y avisa por stderr. No guarda informes.
 - `lib/ui.sh`: color/animación y progreso. La animación se activa con TTY, color, ancho >= 36 y sin `--no-anim`; por debajo de 70 columnas usa una cabecera compacta. La línea del logo incluye fecha/hora (y host solo en modo `menu`) según el ancho; en compacta sustituye el subtítulo por hora/fecha. La animación de auditoría dura al menos `UI_ANIM_MIN_MS` y se mantiene `UI_ANIM_TAIL_MS` al terminar los checks, sin cambiar la velocidad de frame. Sin animación pero con TTY, `ui_progress_frame` mantiene una línea de progreso. Los traps restauran cursor, limpian la línea y borran `RUN_DIR`. Con `--save -` se activa `UI_QUIET` y no se emite nada por stdout salvo el Markdown.
 - `lib/menu.sh`: menú fzf (`menu_main`), filas con campo oculto para la vista previa (`__preview action|check|report|help <arg>`) y autoinstalación de fzf. Las filas usan `texto<TAB>valor` (tabulador como delimitador invisible); el panel derecho se genera en un subproceso del propio script. El menú principal ofrece las cinco auditorías de perfil con contadores dinámicos, un toggle `MENU_SUDO` (se aplica a auditorías y `watch`; la fila indica «sin caché» si `sudo -n` no está disponible) y la acción de vigilancia. El logo de la cabecera se redibuja cada 3 s con la tabla de colores de `dash4me.sh` calculada a partir del segundo actual y, en modo `menu`, añade fecha/hora y host según `UI_DT_MIN_WIDTH`/`UI_HOST_MIN_WIDTH` (el host no se repite en la segunda línea) (`menu_logo_start`, solo en el menú principal; se detiene al lanzar una acción). Los traps del menú paran el animador y muestran `menu_exit_msg` al salir con ESC, Ctrl-C, TERM o HUP; la salida normal usa el mismo mensaje sin duplicarlo (`MENU_EXIT_SHOWN`). Respeta `--no-color`/`NO_COLOR` y `UI_UTF8`. `UI_ANIM` se restaura tras cada auditoría porque `ui_header_close` lo desactiva. La cabecera resume las opciones en lenguaje llano (`General = más fiable`, `Esencial = rápido`, `+sudo = más datos`, `watch = vigilancia`) y las filas usan etiquetas cortas para terminales estrechas; `menu_fzf_height` reserva seis líneas para no tapar esa cabecera.
 - `lib/distro.sh` + `lib/family/*.sh`: familia desde `/etc/os-release` (fallback por gestor). Cada adaptador define `FAMILY_LABEL`, `PKG_MGR` y `pkg_updates_report` (primera línea = nº de actualizaciones, resto = listado). Nueva capacidad → `pkg_update_supported` o guardas con `have`.
@@ -40,11 +40,18 @@ Auditoría de seguridad local en Bash, **solo lectura**, multi-distro. Estado ac
 4. Decide su presencia en los perfiles y actualiza `lib/profiles.sh` (las listas explícitas o de exclusión). Comprueba el reparto con `./watch4me.sh explain --list`.
 5. Actualiza el catálogo, los contadores y las etiquetas de perfil del README si cambia el número de checks; sube `VERSION` en `watch4me.sh` al cerrar un hito.
 
-## Validación (no hay suite de tests todavía)
+## Validación
 
 ```sh
+# Suite completa (Bash puro; shellcheck opcional)
+./tests/run-tests.sh
+SHELLCHECK=/ruta/a/shellcheck ./tests/run-tests.sh   # incluye lint si se indica
+
+# ShellCheck directo (si está instalado)
+shellcheck -x watch4me.sh lib/*.sh lib/family/*.sh checks/*.sh tests/*.sh
+
 # Sintaxis de todo
-for f in watch4me.sh lib/*.sh lib/family/*.sh checks/*.sh; do bash -n "$f" || exit 1; done
+for f in watch4me.sh lib/*.sh lib/family/*.sh checks/*.sh tests/*.sh; do bash -n "$f" || exit 1; done
 
 # Auditoría no interactiva: 74 checks, exit 0/1/2, 0 ANSI
 ./watch4me.sh audit --no-anim --no-color > /tmp/opencode/out.txt; echo "exit=$?"
@@ -87,10 +94,10 @@ perl -0777 -ne 'print scalar(() = /\e\[/g)' /tmp/opencode/watch.txt # debe impri
 
 En TTY, comprueba a mano que `./watch4me.sh` abre el menú, que las filas de perfil ejecutan la auditoría correcta, que el toggle de sudo cambia de estado, que `ESC` vuelve/sale y que `watch` redibuja la pantalla y se detiene con `Ctrl-C` sin dejar la terminal sucia. El panel de vista previa se puede probar sin fzf con `__preview`.
 
-Al terminar, borra `reports/watch4me_*` de prueba (`.md` y `.json`) y comprueba que `state/tmp` queda vacío. `shellcheck` **no está instalado** en el equipo de desarrollo; M4 lo contempla.
+Al terminar, borra `reports/watch4me_*` de prueba (`.md` y `.json`) y comprueba que `state/tmp` queda vacío. La suite omite `shellcheck` si no está instalado; se validó con el binario estático 0.10.0. Los arrays de las librerías usan `declare -g` para poder cargarse dentro de funciones (subshells de la suite).
 
 ## Estado conocido del equipo de referencia
 
-Arch Linux, `sudo -n` disponible. Última auditoría general: **76/100 sin sudo y 76/100 con sudo, exit 1**; 74 checks, 33 PASS / 21 WARN / 5 FAIL / 13 SKIP / 2 INFO. Los 5 FAIL actuales son reales y no regresiones: SYS-04 (sysctl), SYS-09 (opciones de montaje), SYS-11 (sin AppArmor/SELinux), USR-06 (miembro `brltty` en el grupo root) e INT-06 (capacidades de `btop`). No los "arregles" en el código.
+Arch Linux. En la última medición `sudo -n` no tenía caché (`sudo: no (sin caché)`), así que `--sudo` no añadió lecturas. Última auditoría general: **77/100 sin sudo y 77/100 con `--sudo` (sin caché), exit 1**; 74 checks, 34 PASS / 20 WARN / 5 FAIL / 13 SKIP / 2 INFO. Los 5 FAIL actuales son reales y no regresiones: SYS-04 (sysctl), SYS-09 (opciones de montaje), SYS-11 (sin AppArmor/SELinux), USR-06 (miembro `brltty` en el grupo root) e INT-06 (capacidades de `btop`). No los "arregles" en el código.
 
-Perfiles medidos en el mismo equipo: `servidor` 67 checks (exit 1), `cliente` 41 (exit 1), `domestico` 35 (exit 1), `esencial` 14 (exit 1, 1–2 s). `watch --once` funciona sin TTY con 0 ANSI.
+Perfiles medidos en el mismo equipo: `servidor` 67 checks (exit 1), `cliente` 41 (exit 1), `domestico` 35 (exit 1), `esencial` 14 (100/100, exit 0, 0–2 s). `watch --once` funciona sin TTY con 0 ANSI.

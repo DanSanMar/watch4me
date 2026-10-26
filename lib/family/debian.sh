@@ -2,6 +2,9 @@
 # watch4me — adaptador Debian / Ubuntu
 # Licencia: GPLv3
 
+# FAMILY_LABEL y PKG_MGR los consume lib/distro.sh.
+# shellcheck disable=SC2034
+
 FAMILY_LABEL='Debian/Ubuntu'
 PKG_MGR='apt'
 

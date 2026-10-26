@@ -2,6 +2,9 @@
 # watch4me — renderizador Markdown
 # Licencia: GPLv3
 
+# Los textos son Markdown literal (comillas invertidas incluidas).
+# shellcheck disable=SC2016
+
 _md_status_label() {
     status_label "$1"
 }
@@ -217,5 +220,5 @@ render_md() {
 
     printf -- '---\n\n'
     printf 'Generado por watch4me v%s · licencia GPLv3 · la cabecera animada deriva de [dash4me](https://github.com/DanSanMar/dash4me)\n' \
-        "${VERSION:-0.6.0}"
+        "${VERSION:-0.6.1}"
 }
