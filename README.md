@@ -1,11 +1,11 @@
 # 🛡 watch4me
 
-Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye **cinco perfiles** según el tipo de equipo y una **vigilancia en vivo** de conexiones, servicios, procesos y persistencia. También tiene un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
+Auditoría de seguridad local en Bash, **solo lectura**. Analiza el sistema, muestra los hallazgos en pantalla y, si tú quieres, guarda un informe en **Markdown y JSON**. Incluye **cinco perfiles** según el tipo de equipo, una **vigilancia en vivo** de conexiones, servicios, procesos y persistencia, y una **baseline de auditoría** para detectar cambios con `monitor`. También tiene un **menú interactivo con fzf** (vista previa y ayuda de atajos) que sigue la línea de los programas *4me*.
 
-Estado actual: **M2.7 + M4 / v0.6.1** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación, `explain` enriquecido, suite de pruebas y `shellcheck` limpio.
+Estado actual: **M2.7 + M3 + M4 / v0.7.0** — 74 checks en 8 dominios, perfiles `general`, `servidor`, `cliente`, `domestico` y `esencial`, vigilancia `watch`, baseline y monitor de cambios (solo auditoría, sin timer), menú fzf con vista previa, informes Markdown y JSON, resumen ejecutivo con prioridades, guía de actuación, `explain` enriquecido, suite de pruebas y `shellcheck` limpio.
 
 ```text
---- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.6.1 ---
+--- 🛡 WATCH4ME | AUDITORÍA DE SEGURIDAD | v0.7.0 ---
  perfil: General (74 checks) · host: arch-cosmic · distro: arch · root: no
 ```
 
@@ -34,6 +34,10 @@ chmod +x watch4me.sh
 ./watch4me.sh audit --save             # guarda .md y .json en reports/
 ./watch4me.sh audit --save - > informe.md   # Markdown por stdout
 ./watch4me.sh audit --save /ruta/informe     # ruta concreta (genera .md y .json)
+./watch4me.sh baseline                 # guarda la auditoría general como referencia
+./watch4me.sh baseline --profile esencial # baseline del perfil esencial
+./watch4me.sh baseline --show          # consulta la baseline sin auditar
+./watch4me.sh monitor                  # compara la auditoría con la baseline
 ./watch4me.sh watch                    # vigilancia en vivo (TTY con color)
 ./watch4me.sh watch --once             # una sola captura, para scripts o cron
 ./watch4me.sh explain NET-01           # detalle y remedio de un check
@@ -76,7 +80,9 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 | Cliente | Perfil `cliente`: 41 checks de escritorio, Wi-Fi y cifrado |
 | PC doméstico | Perfil `domestico`: 35 checks de un equipo de casa |
 | Vistazo esencial | Perfil `esencial`: 14 checks rápidos, con timeouts de 8 s |
-| Lecturas con sudo | Activa o desactiva `sudo -n` para las próximas auditorías y para `watch`; muestra «sin caché» si no está disponible |
+| Crear baseline | Guarda una auditoría general como referencia en `state/baseline/<host>/` |
+| Monitorizar cambios | Repite el perfil guardado y compara estados y score con la baseline |
+| Lecturas con sudo | Activa o desactiva `sudo -n` para las próximas auditorías, `baseline`, `monitor` y `watch`; muestra «sin caché» si no está disponible |
 | Vigilancia en vivo | Abre `watch`: puertos, conexiones, servicios y persistencia |
 | Explicar un check | Buscador por ID, título o dominio con ficha, perfiles y remedio |
 | Catálogo de checks | Los 74 checks agrupados por dominio, con sus perfiles |
@@ -84,7 +90,7 @@ En una terminal, `./watch4me.sh` abre un menú basado en `fzf` con el mismo esti
 | Ayuda y atajos | Comandos directos: `--save`, `--profile`, `watch`, `explain`… |
 | Salir | Cierra el menú sin ejecutar nada |
 
-Cada auditoría lanzada desde el menú ofrece guardar el informe al terminar. En dos palabras: **general** es la recomendada; **servidor**, **cliente** y **doméstico** se ajustan al uso del equipo; **esencial** cambia exhaustividad por tiempo; **sudo** añade lecturas protegidas (activa antes la caché con `sudo -v`); **watch** vigila sin auditar.
+Cada auditoría lanzada desde el menú ofrece guardar el informe al terminar. En dos palabras: **general** es la recomendada; **servidor**, **cliente** y **doméstico** se ajustan al uso del equipo; **esencial** cambia exhaustividad por tiempo; **baseline** guarda una referencia y **monitor** avisa de cambios; **sudo** añade lecturas protegidas (activa antes la caché con `sudo -v`); **watch** vigila sin auditar.
 
 Teclas: escribe para filtrar, `ENTER` ejecuta, `ESC` vuelve o sale. El logo de la cabecera va cambiando de color cada 3 segundos con la misma paleta de `dash4me` mientras el menú está abierto, e incluye fecha, hora y host cuando el ancho de la terminal lo permite; en terminales estrechas cambia el subtítulo por la hora y la fecha. Al salir con `ESC`, `Ctrl-C` o la acción «Salir» se muestra un mensaje de despedida con los atajos directos.
 
@@ -92,6 +98,44 @@ Si `fzf` no está instalado, el menú muestra el comando de instalación para tu
 
 ```sh
 WATCH4ME_NO_INSTALL=1 ./watch4me.sh menu
+```
+
+## Baseline y monitor (`baseline` / `monitor`)
+
+La baseline es una **fotografía de la auditoría** para saber qué ha cambiado después. Guarda solo los checks: estado, detalle, severidad, score y metadatos del equipo. No guarda puertos, servicios, ficheros ni procesos; para eso está `watch`.
+
+```sh
+./watch4me.sh baseline                  # auditoría general y baseline del host
+./watch4me.sh baseline --profile esencial
+./watch4me.sh baseline --show           # consulta la baseline guardada
+./watch4me.sh baseline --force          # sobrescribe sin preguntar (scripts)
+./watch4me.sh monitor                   # repite el perfil guardado y compara
+./watch4me.sh monitor --profile esencial # debe coincidir con la baseline
+```
+
+Hay **una baseline por host**. El perfil queda guardado dentro, así que `monitor` repite exactamente ese perfil y no hace falta indicarlo. Si ya existe, `baseline` pide confirmación en terminal; sin TTY exige `--force` para no sobrescribir por accidente. Los datos quedan en `state/baseline/<host>/` con permisos privados (`600` los ficheros, `700` los directorios); el detalle puede incluir nombres de usuario y rutas, por eso no se comparte.
+
+`monitor` clasifica cada diferencia:
+
+- **Empeoran**: un check pasa a un estado peor (por ejemplo, `PASS` → `FAIL`).
+- **Omitidos**: antes se evaluaba y ahora no; puede ser falta de `sudo` o de una herramienta. Cuenta como pérdida de cobertura.
+- **Se evalúan ahora**: antes era `SKIP` y ahora tiene un estado real.
+- **Nuevos**: checks que no estaban en la baseline, por cambio de catálogo.
+- **Mejoran** y **sin referencia**: mejoras y checks retirados del perfil; los retirados cuentan como pérdida de cobertura.
+
+Si el cambio de catálogo es intencionado, recrea la baseline con `./watch4me.sh baseline --force`. Además, `monitor` compara el score. Si la baseline se creó con `--sudo`, `monitor` intenta reutilizar `sudo -n`; si ya no hay caché, avisa y los checks protegidos pueden quedar omitidos.
+
+La baseline **no guarda informes** `.md`/`.json`: para conservar una auditoría completa usa `./watch4me.sh audit --save`. `monitor` es una sola ejecución y **no instala timer ni envía notificaciones**; se puede llamar a mano, desde el menú o desde cron usando su código de salida.
+
+| Modo | Códigos |
+|---|---|
+| `baseline` | `0` guardada o cancelada por el usuario · `64` error de uso, de ejecución o de escritura |
+| `monitor` | `0` sin regresiones · `1` regresión, aviso nuevo o pérdida de cobertura (omitidos o retirados) · `2` fallo crítico nuevo · `64` sin baseline, baseline incompatible o perfil incorrecto |
+
+El estado interno se puede aislar en pruebas o mover a otra ruta con `WATCH4ME_STATE_DIR`:
+
+```sh
+WATCH4ME_STATE_DIR=/tmp/watch4me-state ./watch4me.sh baseline --profile esencial
 ```
 
 ## Vigilancia en vivo (`watch`)
@@ -127,19 +171,21 @@ En una captura única, `watch` devuelve `0` sin hallazgos, `1` con avisos y `2` 
 | `menu`, `-m`, `--menu` | abre el menú interactivo (requiere `fzf`) |
 | `audit` | fuerza la auditoría sin menú |
 | `watch` | abre la vigilancia en vivo |
-| `--profile P` | selecciona el perfil: `general` (por defecto), `servidor`, `cliente`, `domestico` o `esencial` |
+| `--profile P` | selecciona el perfil: `general` (por defecto), `servidor`, `cliente`, `domestico` o `esencial`; en `baseline` elige el que se guarda y en `monitor` debe coincidir con el guardado |
 | `--interval N` | `watch`: segundos entre capturas (por defecto, 3) |
 | `--once` | `watch`: una sola captura y sale; útil sin TTY o en cron |
 | `--save [ruta]` | guarda `.md` y `.json` sin preguntar; sin ruta usa `reports/`; `-` = solo Markdown por stdout |
+| `--force` | `baseline`: sobrescribe la baseline existente sin preguntar |
+| `--show` | `baseline`: muestra la baseline guardada sin ejecutar checks |
 | `--no-anim` | cabecera estática; el progreso sigue visible en terminal |
 | `--no-color` | sin colores (también `NO_COLOR=1`) |
-| `--sudo` | usa `sudo -n` para lecturas que requieren root; nunca pide contraseña |
+| `--sudo` | usa `sudo -n` para lecturas que requieren root; nunca pide contraseña; `monitor` reutiliza el sudo de la baseline |
 | `explain <ID>...` | muestra la ficha y el remedio de uno o varios checks |
 | `explain --list` | catálogo agrupado por dominio y perfiles |
 | `-h`, `--help` | ayuda completa de la CLI |
 | `-v`, `--version` | versión |
 
-En `audit`, los perfiles `general`, `servidor`, `cliente` y `domestico` permiten escaneos de hasta 30 s; `esencial` los limita a 8 s y reduce los timeouts de paquetes (mínimo 5 s). `--save` no se puede combinar con `watch`.
+En `audit`, `baseline` y `monitor`, los perfiles `general`, `servidor`, `cliente` y `domestico` permiten escaneos de hasta 30 s; `esencial` los limita a 8 s y reduce los timeouts de paquetes (mínimo 5 s). `--save` no se puede combinar con `watch`, `baseline` ni `monitor`.
 
 ### Códigos de salida
 
@@ -148,7 +194,9 @@ En `audit`, los perfiles `general`, `servidor`, `cliente` y `domestico` permiten
 | `0` | sin hallazgos relevantes |
 | `1` | avisos o fallos no críticos |
 | `2` | al menos un fallo crítico |
-| `64` | uso incorrecto, modo no disponible (`baseline`, `monitor`, menú sin TTY) o falta `ss` en `watch` |
+| `64` | uso incorrecto, baseline ausente o incompatible, menú sin TTY o falta `ss` en `watch` |
+
+`baseline` usa `0`/`64`; `monitor` usa `0`/`1`/`2`/`64` según los cambios. La tabla anterior describe los códigos de `audit`.
 
 ### Salida
 
@@ -335,22 +383,24 @@ Los puertos de alto riesgo (21, 23, 445, 3389, 5900, 6379, 27017…) marcan `FAI
 
 ## Seguridad del propio script
 
-- Las auditorías no escriben fuera de `reports/` y `state/tmp/` (se borra al salir). `watch` tampoco escribe fuera de `state/tmp/`.
-- Las auditorías y la vigilancia no instalan, no modifican configuración, no bloquean tráfico y no envían datos.
+- Las auditorías no escriben fuera de `reports/` y `state/tmp/` (este último se borra al salir). `watch` tampoco escribe fuera de `state/tmp/`.
+- `baseline` guarda una referencia persistente en `state/baseline/<host>/` (`baseline.tsv` y `baseline.meta`, modo `600` y directorios `700`). Solo contiene el resultado de la auditoría; no guarda puertos, servicios, ficheros ni procesos. `monitor` escribe su ejecución temporal en `state/tmp/`.
+- `WATCH4ME_STATE_DIR` permite mover todo el estado interno (útil en pruebas); si lo usas, protege esa ruta igual que `state/`.
+- Las auditorías, `baseline`, `monitor` y la vigilancia no instalan, no modifican configuración, no bloquean tráfico y no envían datos.
 - **Única excepción:** el menú ofrece instalar `fzf` con el gestor de la distribución. Solo ocurre tras confirmación explícita (`[s/N]`, por defecto no) y es la única escritura en el sistema. `WATCH4ME_NO_INSTALL=1` lo impide.
 - No usa `eval` ni ejecuta contenido de ficheros analizados.
 - Con `--sudo` solo ejecuta lecturas (`cat`, `stat`, `ss`, `find`, `readlink`, `grep`, `getcap`, `modinfo`, `nft list`, `iptables -S`, `sshd -T`, `pacman -Qkk`, `debsums -s`, `rpm -Va`) mediante `sudo -n`.
-- No pide contraseña durante la auditoría ni la vigilancia: si `sudo -n` falla, el check se omite con `SKIP` o se muestra menos información.
+- No pide contraseña durante la auditoría, `baseline`, `monitor` ni la vigilancia: si `sudo -n` falla, el check se omite con `SKIP` o se muestra menos información.
 
 ## Pruebas
 
-La suite no necesita dependencias nuevas, crea su propio directorio temporal y no toca `reports/`:
+La suite no necesita dependencias nuevas, crea su propio directorio temporal y aísla el estado con `WATCH4ME_STATE_DIR`; no toca `reports/` ni `state/baseline/` reales:
 
 ```sh
 ./tests/run-tests.sh
 ```
 
-Cubre catálogo, perfiles, scoring, contrato de checks, clasificación de `watch` y `NET-01`, menú, CLI e informes. Si `shellcheck` está disponible, se ejecuta como una prueba más; también se puede indicar su ruta:
+Cubre catálogo, perfiles, scoring, contrato de checks, clasificación de `watch` y `NET-01`, baseline y comparación de cambios, menú, CLI e informes. Si `shellcheck` está disponible, se ejecuta como una prueba más; también se puede indicar su ruta:
 
 ```sh
 SHELLCHECK=/ruta/a/shellcheck ./tests/run-tests.sh
@@ -366,7 +416,8 @@ lib/ui.sh                colores y cabecera animada
 lib/menu.sh              menú fzf, perfiles, vista previa y ayuda
 lib/profiles.sh          selección de checks por perfil
 lib/watch.sh             vigilancia de conexiones, servicios y persistencia
-lib/common.sh            utilidades
+lib/baseline.sh          baseline de auditoría, comparación y monitor
+lib/common.sh            utilidades y directorio de estado
 lib/distro.sh            detección de familia
 lib/family/*.sh          adaptadores por distribución
 lib/checks.sh            registro, estado y scoring
@@ -375,8 +426,9 @@ lib/render-md.sh         informe Markdown
 lib/render-json.sh       informe JSON estructurado
 checks/*.sh              74 checks en 8 dominios
 tests/run-tests.sh       suite de regresión (Bash puro)
-reports/                 informes generados
-state/                   estado interno (futuro baseline)
+reports/                 informes generados (.md y .json)
+state/tmp/               ejecuciones temporales (se borra al salir)
+state/baseline/<host>/   baseline de auditoría (una por host)
 ```
 
 ## Roadmap
@@ -386,7 +438,8 @@ state/                   estado interno (futuro baseline)
 - **M2.5** ✅ menú interactivo con fzf, vista previa por acción y ayuda de atajos (v0.4.0)
 - **M2.6** ✅ informes Markdown + JSON, nombres sin guiones y sin sobrescrituras (v0.5.0)
 - **M2.7** ✅ cinco perfiles por tipo de equipo y vigilancia en vivo `watch` (v0.6.0)
-- **M3** baseline + `monitor` con notificación de sistema (`notify-send` / journal) y timer de usuario
+- **M3** ✅ baseline de auditoría y `monitor` de una sola ejecución; compara estados y score, sin timer ni notificaciones (v0.7.0)
+- **Pendiente**: notificaciones de sistema (`notify-send` / journal) y timer de usuario para `monitor`; no forman parte de M3
 - **M4** ✅ documentación, tests y `shellcheck` limpio (v0.6.1, adelantado a M3)
 
 ## Licencia

@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-VERSION='0.6.1'
+VERSION='0.7.0'
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] \
     || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
@@ -39,6 +39,8 @@ LIB_DIR="$SCRIPT_DIR/lib"
 . "$LIB_DIR/render-md.sh"
 # shellcheck source=lib/render-json.sh
 . "$LIB_DIR/render-json.sh"
+# shellcheck source=lib/baseline.sh
+. "$LIB_DIR/baseline.sh"
 
 MODE=''
 SAVE_TO=''
@@ -47,6 +49,9 @@ NO_COLOR_FLAG=0
 USE_SUDO=0
 EXPLAIN_LIST=0
 EXIT_CODE=0
+FORCE=0
+BASELINE_SHOW=0
+PROFILE_EXPLICIT=0
 declare -a EXPLAIN_IDS=()
 PREVIEW_KIND=''
 PREVIEW_ARG=''
@@ -61,6 +66,8 @@ USO
   ./watch4me.sh                 menú interactivo (TTY) o auditoría (sin TTY)
   ./watch4me.sh menu            fuerza el menú interactivo (requiere fzf)
   ./watch4me.sh audit [opciones]
+  ./watch4me.sh baseline [opciones]
+  ./watch4me.sh monitor [opciones]
   ./watch4me.sh watch [opciones]
   ./watch4me.sh explain <ID> [<ID>...]
   ./watch4me.sh explain --list
@@ -75,6 +82,8 @@ OPCIONES
   --no-anim              desactiva la cabecera animada
   --no-color             desactiva los colores (también NO_COLOR=1)
   --sudo                 permite lecturas con sudo -n (nunca pide contraseña)
+  --force                baseline: sobrescribe la baseline existente
+  --show                 baseline: muestra la baseline guardada sin auditar
   --interval N           watch: segundos entre capturas (por defecto: 3)
   --once                 watch: una sola captura y sale (scripts, cron)
   -h, --help             muestra esta ayuda
@@ -87,6 +96,25 @@ PERFILES (cambian qué checks se ejecutan, no su profundidad)
   domestico  $(profile_count domestico) checks  Lo importante de un PC de casa, sin hardening de servidor.
   esencial   $(profile_count esencial) checks  Vistazo rápido de alto valor (escaneos de hasta 8 s).
   Alias compatibles: full = general · quick = esencial
+
+BASELINE Y MONITOR
+  baseline               ejecuta una auditoría y guarda su estado como
+                         referencia en state/baseline/<host>/. Guarda solo
+                         la auditoría: estados, detalle, severidad, score y
+                         metadatos; no puertos, servicios, ficheros ni procesos.
+                         Por defecto usa el perfil general.
+  baseline --show        muestra la baseline guardada sin ejecutar checks
+  monitor                repite la auditoría del perfil guardado y compara
+                         con la baseline. Es de una sola ejecución: no instala
+                         timer ni envía notificaciones.
+  --profile P            baseline: perfil que se guarda (por defecto general)
+                         monitor: debe coincidir con el perfil de la baseline
+  --sudo                 también se puede usar al crear o comparar la baseline;
+                         monitor reutiliza sudo si la baseline lo usó
+  --force                baseline: sobrescribe sin preguntar (scripts)
+  Si ya existe una baseline, baseline pide confirmación en TTY o exige
+  --force. Monitor sale 0 sin regresiones, 1 con regresiones o pérdida de
+  cobertura y 2 con un fallo crítico nuevo.
 
 VIGILANCIA
   watch                  monitor en vivo de puertos, conexiones, servicios,
@@ -111,6 +139,9 @@ EJEMPLOS
   ./watch4me.sh audit --profile esencial
   ./watch4me.sh audit --sudo --save
   ./watch4me.sh audit --save - > informe.md
+  ./watch4me.sh baseline --profile esencial
+  ./watch4me.sh baseline --show
+  ./watch4me.sh monitor --no-anim
   ./watch4me.sh watch
   ./watch4me.sh watch --once --interval 5
   ./watch4me.sh explain --list
@@ -120,11 +151,17 @@ SALIDA
   0  sin hallazgos relevantes
   1  avisos o fallos no críticos
   2  al menos un fallo crítico
-  64 uso incorrecto, modo no disponible o falta ss en watch
+  64 uso incorrecto, baseline ausente/incompatible o perfil distinto,
+     o falta ss en watch
+
+  baseline sale 0 al guardar (o si cancelas) y 64 si no puede guardar.
+  monitor usa 0/1/2 según los cambios y 64 si no puede leer la baseline
+  o el perfil no coincide.
 
 VARIABLES
   NO_COLOR=1                desactiva colores
   WATCH4ME_ALLOW_PORTS      puertos expuestos considerados esperados (def. "22")
+  WATCH4ME_STATE_DIR        directorio de estado (def. state/); útil en pruebas
 EOF
 }
 
@@ -165,11 +202,15 @@ parse_args() {
             --profile)
                 [ $# -ge 2 ] || die '--profile requiere general|servidor|cliente|domestico|esencial'
                 PROFILE=$2
+                PROFILE_EXPLICIT=1
                 shift
                 ;;
             --profile=*)
                 PROFILE=${1#*=}
+                PROFILE_EXPLICIT=1
                 ;;
+            --force) FORCE=1 ;;
+            --show) BASELINE_SHOW=1 ;;
             --interval)
                 [ $# -ge 2 ] || die '--interval requiere un número de segundos'
                 WATCH_INTERVAL=$2
@@ -227,6 +268,19 @@ parse_args() {
     if [ "$MODE" = 'watch' ] && [ -n "$SAVE_TO" ]; then
         die 'el modo watch no guarda informes; usa audit --save'
     fi
+
+    if { [ "$MODE" = 'baseline' ] || [ "$MODE" = 'monitor' ]; } && [ -n "$SAVE_TO" ]; then
+        die "el modo $MODE no guarda informes; usa audit --save"
+    fi
+    if [ "$FORCE" -eq 1 ] && [ "$MODE" != 'baseline' ]; then
+        die '--force solo se usa con baseline'
+    fi
+    if [ "$BASELINE_SHOW" -eq 1 ] && [ "$MODE" != 'baseline' ]; then
+        die '--show solo se usa con baseline'
+    fi
+    if [ "$FORCE" -eq 1 ] && [ "$BASELINE_SHOW" -eq 1 ]; then
+        die '--force no se combina con --show'
+    fi
 }
 
 load_checks() {
@@ -239,7 +293,8 @@ load_checks() {
 }
 
 init_run_dir() {
-    local base="$SCRIPT_DIR/state/tmp"
+    local base
+    base="$(state_dir)/tmp"
     if mkdir -p "$base" 2>/dev/null && [ -w "$base" ]; then
         chmod 700 "$base" 2>/dev/null || true
         RUN_DIR=$(mktemp -d "$base/run.XXXXXX" 2>/dev/null) || RUN_DIR=''
@@ -557,10 +612,13 @@ main() {
             watch_main
             return $?
             ;;
-        baseline|monitor)
-            printf 'watch4me: el modo %s se implementa en el hito M3 (baseline y monitorización programada).\n' "$MODE" >&2
-            printf 'watch4me: para vigilancia en vivo usa ./watch4me.sh watch\n' >&2
-            return 64
+        baseline)
+            baseline_main
+            return $?
+            ;;
+        monitor)
+            monitor_main
+            return $?
             ;;
         explain)
             load_checks

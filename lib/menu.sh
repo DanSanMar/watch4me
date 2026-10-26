@@ -394,6 +394,8 @@ menu_rows_main() {
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '💻' '[C]')${C_RESET} ${C_BOLD}Cliente${C_RESET} ${C_DIM}${sep}${C_RESET} escritorio, Wi-Fi y cifrado ${sep} $(profile_count cliente) checks" "audit-cliente"
     menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '🏠' '[D]')${C_RESET} ${C_BOLD}PC doméstico${C_RESET} ${C_DIM}${sep}${C_RESET} lo importante de casa ${sep} $(profile_count domestico) checks" "audit-domestico"
     menu_row "${C_BOLD}${C_YELLOW_B}$(ui_icon '⚡' '!')${C_RESET} ${C_BOLD}Vistazo esencial${C_RESET} ${C_DIM}${sep}${C_RESET} rápido ${sep} $(profile_count esencial) checks" "audit-esencial"
+    menu_row "${C_BOLD}${C_MAGENTA_B}$(ui_icon '📌' '[b]')${C_RESET} ${C_BOLD}Crear baseline${C_RESET} ${C_DIM}${sep}${C_RESET} guarda la auditoría como referencia" "baseline"
+    menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '📈' '[m]')${C_RESET} ${C_BOLD}Monitorizar cambios${C_RESET} ${C_DIM}${sep}${C_RESET} compara con la baseline" "monitor"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔑' '[s]')${C_RESET} ${C_BOLD}Lecturas con sudo${C_RESET} ${C_DIM}${sep}${C_RESET} ${sudo_state} ${sep} no pide contraseña" "toggle-sudo"
     menu_row "${C_BOLD}${C_GREEN_B}$(ui_icon '👁' '[w]')${C_RESET} ${C_BOLD}Vigilancia en vivo${C_RESET} ${C_DIM}${sep}${C_RESET} conexiones, servicios y persistencia" "watch"
     menu_row "${C_BOLD}${C_CYAN_B}$(ui_icon '🔎' '[?]')${C_RESET} ${C_BOLD}Explicar un check${C_RESET} ${C_DIM}${sep}${C_RESET} detalle y remedio" "explain-pick"
@@ -456,6 +458,69 @@ menu_watch() {
         rm -rf -- "$RUN_DIR"
     fi
     RUN_DIR=''
+    UI_ANIM=$anim_save
+
+    menu_pause
+    return "$rc"
+}
+
+menu_baseline() {
+    local rc anim_save=$UI_ANIM
+
+    USE_SUDO=${MENU_SUDO:-0}
+    SUDO_CHECKED=0
+    SUDO_OK=0
+    SAVE_TO=''
+    PROFILE='general'
+    PROFILE_EXPLICIT=0
+    BASELINE_SHOW=0
+    FORCE=0
+
+    if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
+        rm -rf -- "$RUN_DIR"
+    fi
+    RUN_DIR=''
+
+    menu_clear
+    baseline_main
+    rc=$?
+
+    if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
+        rm -rf -- "$RUN_DIR"
+    fi
+    RUN_DIR=''
+    SAVE_TO=''
+    UI_ANIM=$anim_save
+
+    menu_pause
+    return "$rc"
+}
+
+menu_monitor() {
+    local rc anim_save=$UI_ANIM
+
+    USE_SUDO=${MENU_SUDO:-0}
+    SUDO_CHECKED=0
+    SUDO_OK=0
+    SAVE_TO=''
+    PROFILE_EXPLICIT=0
+    BASELINE_SHOW=0
+    FORCE=0
+
+    if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
+        rm -rf -- "$RUN_DIR"
+    fi
+    RUN_DIR=''
+
+    menu_clear
+    monitor_main
+    rc=$?
+
+    if [ -n "${RUN_DIR:-}" ] && [ -d "$RUN_DIR" ]; then
+        rm -rf -- "$RUN_DIR"
+    fi
+    RUN_DIR=''
+    SAVE_TO=''
     UI_ANIM=$anim_save
 
     menu_pause
@@ -575,6 +640,8 @@ menu_rows_help() {
     menu_row "${C_BOLD}./watch4me.sh audit --profile <perfil>${C_RESET} ${C_DIM}${sep}${C_RESET} servidor, cliente, doméstico o esencial" "profiles"
     menu_row "${C_BOLD}./watch4me.sh watch${C_RESET} ${C_DIM}${sep}${C_RESET} vigilancia en vivo de conexiones y servicios" "watch"
     menu_row "${C_BOLD}./watch4me.sh watch --once${C_RESET} ${C_DIM}${sep}${C_RESET} una sola captura, útil en scripts o cron" "watch-once"
+    menu_row "${C_BOLD}./watch4me.sh baseline${C_RESET} ${C_DIM}${sep}${C_RESET} guarda el estado de la auditoría como referencia" "baseline"
+    menu_row "${C_BOLD}./watch4me.sh monitor${C_RESET} ${C_DIM}${sep}${C_RESET} compara la auditoría actual con la baseline" "monitor"
     menu_row "${C_BOLD}./watch4me.sh audit --sudo${C_RESET} ${C_DIM}${sep}${C_RESET} más lecturas con sudo -n, sin contraseña" "sudo"
     menu_row "${C_BOLD}./watch4me.sh audit --save${C_RESET} ${C_DIM}${sep}${C_RESET} guarda .md y .json en reports/" "save"
     menu_row "${C_BOLD}./watch4me.sh audit --save - > informe.md${C_RESET} ${C_DIM}${sep}${C_RESET} Markdown limpio por stdout" "save-stdout"
@@ -733,6 +800,38 @@ menu_pv_action() {
         audit-save)
             menu_pv_profile general 0
             ;;
+        baseline)
+            menu_pv_title 'CREAR BASELINE'
+            menu_pv_text 'Ejecuta una auditoría y guarda su estado como referencia para comparar después.'
+            menu_pv_label 'QUÉ GUARDA'
+            menu_pv_text 'Estado y detalle de cada check, severidad, score y metadatos del equipo.'
+            menu_pv_text 'Solo auditoría: no guarda puertos, servicios, ficheros ni procesos.'
+            menu_pv_label 'PERFIL'
+            menu_pv_text 'Por defecto usa general. Para guardar otro perfil:'
+            menu_pv_cmd './watch4me.sh baseline --profile esencial'
+            menu_pv_label 'SI YA EXISTE'
+            menu_pv_text 'Pide confirmación en el menú. En scripts, usa --force para sobrescribir.'
+            menu_pv_label 'EFECTOS'
+            menu_pv_text 'Escribe únicamente en state/baseline/<host>/. No modifica el sistema.'
+            menu_pv_label 'SIN TIMER'
+            menu_pv_text 'No instala timer ni envía notificaciones: monitor se ejecuta a mano.'
+            ;;
+        monitor)
+            menu_pv_title 'MONITORIZAR CAMBIOS'
+            menu_pv_text 'Repite la auditoría del perfil guardado y la compara con la baseline.'
+            menu_pv_label 'QUÉ COMPARA'
+            menu_pv_text 'Estado de cada check y score. Muestra mejoras, regresiones,'
+            menu_pv_text 'checks que dejan de evaluarse y cambios de catálogo.'
+            menu_pv_label 'CÓDIGOS'
+            menu_pv_text '0 sin regresiones · 1 regresión o pérdida de cobertura · 2 fallo crítico nuevo.'
+            menu_pv_text '64 si no hay baseline o el perfil no coincide.'
+            menu_pv_label 'SUDO'
+            menu_pv_text 'Si la baseline se creó con sudo, monitor intenta reutilizarlo con sudo -n.'
+            menu_pv_label 'SIN TIMER'
+            menu_pv_text 'Es una sola ejecución. No instala timer ni envía notificaciones.'
+            menu_pv_label 'EQUIVALENTE EN CLI'
+            menu_pv_cmd './watch4me.sh monitor'
+            ;;
         toggle-sudo)
             menu_pv_title 'LECTURAS CON SUDO'
             menu_pv_text 'Activa o desactiva sudo -n para las próximas auditorías y para watch.'
@@ -799,10 +898,10 @@ menu_pv_action() {
         help)
             menu_pv_title 'AYUDA Y ATAJOS'
             menu_pv_text 'Reúne los comandos directos de watch4me con ejemplos listos'
-            menu_pv_text 'para copiar: perfiles, watch, sudo, informes y explain.'
+            menu_pv_text 'para copiar: perfiles, baseline, watch, sudo, informes y explain.'
             menu_pv_label 'INCLUYE'
-            menu_pv_text '--profile, watch, --once, --interval, --save, --save -, --sudo,'
-            menu_pv_text 'explain, códigos de salida y variables de entorno.'
+            menu_pv_text '--profile, baseline, monitor, watch, --once, --interval, --save,'
+            menu_pv_text '--save -, --sudo, explain, códigos de salida y variables de entorno.'
             menu_pv_label 'ATAJOS'
             menu_pv_text 'Dentro del menú: escribe para filtrar, ENTER para ejecutar,'
             menu_pv_text 'ESC para volver o salir.'
@@ -924,6 +1023,33 @@ menu_pv_help() {
             menu_pv_cmd './watch4me.sh watch --interval 5'
             menu_pv_text 'Cambia los segundos entre capturas en el modo en vivo.'
             ;;
+        baseline)
+            menu_pv_title 'BASELINE DE AUDITORÍA'
+            menu_pv_label 'COMANDO'
+            menu_pv_cmd './watch4me.sh baseline'
+            menu_pv_cmd './watch4me.sh baseline --profile esencial'
+            menu_pv_label 'QUÉ HACE'
+            menu_pv_text 'Ejecuta una auditoría y guarda estados, detalle, severidad, score y metadatos.'
+            menu_pv_text 'No guarda puertos, servicios, ficheros ni procesos: eso es watch.'
+            menu_pv_label 'DÓNDE'
+            menu_pv_text 'state/baseline/<host>/baseline.tsv y baseline.meta.'
+            menu_pv_label 'SI YA EXISTE'
+            menu_pv_text 'Pide confirmación o exige --force en scripts.'
+            menu_pv_label 'SIN TIMER'
+            menu_pv_text 'No instala timer ni notificaciones; la comparación es manual.'
+            ;;
+        monitor)
+            menu_pv_title 'MONITOR DE CAMBIOS'
+            menu_pv_label 'COMANDO'
+            menu_pv_cmd './watch4me.sh monitor'
+            menu_pv_label 'QUÉ HACE'
+            menu_pv_text 'Repite la auditoría del perfil guardado y compara check por check.'
+            menu_pv_text 'Muestra mejoras, regresiones, omitidos, nuevos y cambios de score.'
+            menu_pv_label 'CÓDIGOS'
+            menu_pv_text '0 sin regresiones · 1 regresión o pérdida de cobertura · 2 crítico nuevo · 64 sin baseline.'
+            menu_pv_label 'SIN TIMER'
+            menu_pv_text 'Una sola ejecución. No instala timer ni envía notificaciones.'
+            ;;
         sudo)
             menu_pv_title 'LECTURAS CON SUDO'
             menu_pv_label 'COMANDO'
@@ -1000,10 +1126,10 @@ menu_pv_help() {
             ;;
         exit)
             menu_pv_title 'CÓDIGOS DE SALIDA'
-            menu_pv_text '0   sin hallazgos relevantes'
-            menu_pv_text '1   avisos o fallos no críticos'
-            menu_pv_text '2   al menos un fallo crítico'
-            menu_pv_text '64  uso incorrecto, modo no disponible o falta ss en watch'
+            menu_pv_text '0   sin hallazgos / monitor sin regresiones'
+            menu_pv_text '1   avisos o fallos no críticos / monitor con regresión'
+            menu_pv_text '2   fallo crítico / monitor con fallo crítico nuevo'
+            menu_pv_text '64  uso incorrecto, sin baseline, perfil distinto o falta ss'
             menu_pv_label 'EJEMPLO EN SCRIPT'
             menu_pv_cmd './watch4me.sh audit --save - > informe.md || rc=$?'
             menu_pv_text 'rc guarda el código para decidir si hay que alertar.'
@@ -1073,6 +1199,8 @@ menu_main() {
             audit-cliente)    menu_run_audit cliente ;;
             audit-domestico)  menu_run_audit domestico ;;
             audit-esencial)   menu_run_audit esencial ;;
+            baseline)         menu_baseline ;;
+            monitor)          menu_monitor ;;
             toggle-sudo)      MENU_SUDO=$(( 1 - MENU_SUDO )) ;;
             watch)            menu_watch ;;
             explain-pick)     menu_pick_check ;;

@@ -26,6 +26,9 @@ cleanup() { rm -rf -- "$TMP"; }
 trap cleanup EXIT
 cd -- "$ROOT" || exit 1
 
+# Aísla todo el estado interno: auditorías, watch y baseline.
+export WATCH4ME_STATE_DIR="$TMP/state"
+
 VERSION=$(sed -n "s/^VERSION='\([^']*\)'.*/\1/p" "$SCRIPT" | head -n 1)
 FILTER=''
 
@@ -138,6 +141,7 @@ run_test() {
 # Carga las librerías sin ejecutar main. Cada prueba corre en un subshell,
 # así que puede modificar arrays y variables sin contaminar al resto.
 load_libs() {
+    SCRIPT_DIR="$ROOT"
     # shellcheck source=../lib/common.sh
     . "$ROOT/lib/common.sh"
     # shellcheck source=../lib/checks.sh
@@ -146,6 +150,8 @@ load_libs() {
     . "$ROOT/lib/profiles.sh"
     # shellcheck source=../lib/watch.sh
     . "$ROOT/lib/watch.sh"
+    # shellcheck source=../lib/baseline.sh
+    . "$ROOT/lib/baseline.sh"
 }
 
 load_catalog() {
@@ -551,6 +557,222 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Baseline y monitor
+# ---------------------------------------------------------------------------
+
+test_baseline_store() {
+    load_libs
+    export WATCH4ME_STATE_DIR="$TMP/state-store"
+    HOSTNAME_SHORT='..'
+    assert_eq "$(baseline_host)" 'localhost' || return 1
+    HOSTNAME_SHORT='testhost'
+    DISTRO_NAME='Test Linux'
+    DISTRO_FAMILY='test'
+
+    CHECK_IDS=(TST-01 TST-02 TST-03)
+    ACTIVE_CHECK_IDS=(TST-01 TST-02 TST-03)
+    CHECK_SEVERITY=([TST-01]=high [TST-02]=critical [TST-03]=low)
+    CHECK_TITLE=([TST-01]='Uno' [TST-02]='Dos' [TST-03]='Tres')
+    RUN_DIR=$(new_run_dir baseline-store) || return 1
+    printf 'PASS\n' > "$RUN_DIR/TST-01.status"
+    printf 'fallo uno\n' > "$RUN_DIR/TST-01.detail"
+    printf 'FAIL\n' > "$RUN_DIR/TST-02.status"
+    printf 'fallo dos\n' > "$RUN_DIR/TST-02.detail"
+    printf 'SKIP\n' > "$RUN_DIR/TST-03.status"
+    printf 'omitido\n' > "$RUN_DIR/TST-03.detail"
+    COUNT=([PASS]=1 [WARN]=0 [FAIL]=1 [SKIP]=1 [INFO]=0)
+    GLOBAL_SCORE=67
+    USE_SUDO=0
+    SUDO_OK=0
+
+    baseline_save esencial 1 || return 1
+
+    local dir="$WATCH4ME_STATE_DIR/baseline/testhost"
+    local tsv="$dir/baseline.tsv" meta="$dir/baseline.meta"
+    assert_file "$tsv" || return 1
+    assert_file "$meta" || return 1
+    assert_eq "$(stat -c '%a' "$tsv")" '600' || return 1
+    assert_eq "$(stat -c '%a' "$meta")" '600' || return 1
+    assert_eq "$(stat -c '%a' "$dir")" '700' || return 1
+    assert_eq "$(stat -c '%a' "$WATCH4ME_STATE_DIR/baseline")" '700' || return 1
+    assert_contains "$(cat "$meta")" 'schema=watch4me.baseline/v1' || return 1
+    assert_contains "$(cat "$meta")" 'profile=esencial' || return 1
+    assert_contains "$(cat "$meta")" 'score=67' || return 1
+    assert_contains "$(cat "$meta")" 'checks_catalog=3' || return 1
+    assert_contains "$(cat "$meta")" 'checks_active=3' || return 1
+    assert_contains "$(cat "$meta")" 'fail=1' || return 1
+    assert_contains "$(cat "$tsv")" $'TST-01\tPASS\thigh\tUno\tfallo uno' || return 1
+    assert_contains "$(cat "$tsv")" $'TST-02\tFAIL\tcritical\tDos\tfallo dos' || return 1
+    assert_eq "$(wc -l < "$tsv" | tr -d ' ')" '3' || return 1
+
+    baseline_load_meta || return 1
+    assert_eq "$BASELINE_PROFILE" 'esencial' || return 1
+    assert_eq "$BASELINE_SCORE" '67' || return 1
+    assert_eq "$BASELINE_FAIL" '1' || return 1
+    baseline_load_checks || return 1
+    assert_eq "${BASELINE_STATUS[TST-01]}" 'PASS' || return 1
+    assert_eq "${BASELINE_STATUS[TST-02]}" 'FAIL' || return 1
+    assert_eq "${BASELINE_DETAIL[TST-03]}" 'omitido' || return 1
+}
+
+test_baseline_compare() {
+    load_libs
+    RUN_DIR=$(new_run_dir baseline-compare) || return 1
+
+    ACTIVE_CHECK_IDS=(TST-01 TST-02 TST-03 TST-04 TST-05 TST-06)
+    CHECK_SEVERITY=(
+        [TST-01]=high [TST-02]=high [TST-03]=medium
+        [TST-04]=low [TST-05]=low [TST-06]=critical
+    )
+    printf 'PASS\n' > "$RUN_DIR/TST-01.status"
+    printf 'FAIL\n' > "$RUN_DIR/TST-02.status"
+    printf 'SKIP\n' > "$RUN_DIR/TST-03.status"
+    printf 'PASS\n' > "$RUN_DIR/TST-04.status"
+    printf 'PASS\n' > "$RUN_DIR/TST-05.status"
+    printf 'FAIL\n' > "$RUN_DIR/TST-06.status"
+
+    BASELINE_ORDER=(TST-01 TST-02 TST-03 TST-04 TST-06 TST-07)
+    BASELINE_STATUS=(
+        [TST-01]=PASS [TST-02]=PASS [TST-03]=PASS
+        [TST-04]=FAIL [TST-06]=PASS [TST-07]=FAIL
+    )
+    BASELINE_SEVERITY=(
+        [TST-01]=high [TST-02]=high [TST-03]=medium
+        [TST-04]=low [TST-06]=critical [TST-07]=high
+    )
+    BASELINE_TITLE=([TST-01]='Uno' [TST-02]='Dos' [TST-03]='Tres' [TST-04]='Cuatro' [TST-06]='Seis' [TST-07]='Siete')
+    BASELINE_DETAIL=([TST-01]='' [TST-02]='' [TST-03]='' [TST-04]='' [TST-06]='' [TST-07]='')
+    BASELINE_SCORE=80
+    GLOBAL_SCORE=70
+
+    baseline_compare
+    assert_eq "$BASELINE_N_WORSE" '2' || return 1
+    assert_eq "$BASELINE_N_BETTER" '1' || return 1
+    assert_eq "$BASELINE_N_SKIP" '1' || return 1
+    assert_eq "$BASELINE_N_EVAL" '0' || return 1
+    assert_eq "$BASELINE_N_NEW" '1' || return 1
+    assert_eq "$BASELINE_N_REMOVED" '1' || return 1
+    assert_eq "$BASELINE_N_ALERT" '2' || return 1
+    assert_eq "$BASELINE_CRIT_FAIL" '1' || return 1
+    assert_eq "$BASELINE_SCORE_DELTA" '-10' || return 1
+    baseline_exit_code
+    assert_exit "$?" 2 || return 1
+
+    # Sin el fallo crítico, la regresión sigue siendo un aviso (1).
+    printf 'PASS\n' > "$RUN_DIR/TST-06.status"
+    baseline_compare
+    assert_eq "$BASELINE_CRIT_FAIL" '0' || return 1
+    baseline_exit_code
+    assert_exit "$?" 1 || return 1
+
+    # Solo mejoras y nuevos checks correctos: 0.
+    printf 'PASS\n' > "$RUN_DIR/TST-02.status"
+    printf 'PASS\n' > "$RUN_DIR/TST-03.status"
+    printf 'FAIL\n' > "$RUN_DIR/TST-04.status"
+    BASELINE_ORDER=(TST-01 TST-02 TST-03 TST-04 TST-06)
+    GLOBAL_SCORE=80
+    baseline_compare
+    assert_eq "$BASELINE_N_WORSE" '0' || return 1
+    assert_eq "$BASELINE_N_SKIP" '0' || return 1
+    assert_eq "$BASELINE_N_REMOVED" '0' || return 1
+    assert_eq "$BASELINE_N_ALERT" '0' || return 1
+    baseline_exit_code
+    assert_exit "$?" 0 || return 1
+
+    # Un check retirado del perfil también es pérdida de cobertura (1).
+    BASELINE_ORDER+=(TST-07)
+    baseline_compare
+    assert_eq "$BASELINE_N_REMOVED" '1' || return 1
+    baseline_exit_code
+    assert_exit "$?" 1 || return 1
+    BASELINE_ORDER=(TST-01 TST-02 TST-03 TST-04 TST-06)
+
+    # Una bajada de score sin cambios de estado también es regresión.
+    GLOBAL_SCORE=79
+    baseline_compare
+    assert_eq "$BASELINE_N_ALERT" '0' || return 1
+    baseline_exit_code
+    assert_exit "$?" 1 || return 1
+
+    # Un check que antes era SKIP y ahora falla se clasifica como evaluación nueva.
+    GLOBAL_SCORE=80
+    printf 'FAIL\n' > "$RUN_DIR/TST-03.status"
+    BASELINE_STATUS[TST-03]='SKIP'
+    baseline_compare
+    assert_eq "${BASELINE_CHANGE[TST-03]}" 'eval' || return 1
+    assert_eq "$BASELINE_N_EVAL" '1' || return 1
+    assert_eq "$BASELINE_N_WORSE" '0' || return 1
+    assert_eq "$BASELINE_N_ALERT" '1' || return 1
+    baseline_exit_code
+    assert_exit "$?" 1 || return 1
+}
+
+test_baseline_cli() {
+    local state="$TMP/state-baseline-cli"
+    local out rc meta tsv
+    export WATCH4ME_STATE_DIR="$state"
+
+    out=$("$SCRIPT" baseline --profile esencial --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 0 || return 1
+    assert_contains "$out" 'Baseline guardada' || return 1
+    assert_no_ansi "$out" || return 1
+
+    meta=$(find "$state/baseline" -name baseline.meta -type f 2>/dev/null | head -n 1)
+    tsv=$(find "$state/baseline" -name baseline.tsv -type f 2>/dev/null | head -n 1)
+    assert_file "$meta" || return 1
+    assert_file "$tsv" || return 1
+    assert_contains "$(cat "$meta")" 'schema=watch4me.baseline/v1' || return 1
+    assert_contains "$(cat "$meta")" 'profile=esencial' || return 1
+    assert_eq "$(wc -l < "$tsv" | tr -d ' ')" '14' || return 1
+
+    out=$("$SCRIPT" baseline --show --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 0 || return 1
+    assert_contains "$out" 'Baseline de auditoría' || return 1
+    assert_contains "$out" 'Score:' || return 1
+    assert_no_ansi "$out" || return 1
+
+    out=$("$SCRIPT" baseline --show --profile general --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'no general' || return 1
+
+    out=$("$SCRIPT" monitor --no-anim --no-color 2>&1)
+    rc=$?
+    assert_in "$rc" '0 1 2' || return 1
+    assert_contains "$out" 'Comparación con la baseline' || return 1
+    assert_contains "$out" 'Score:' || return 1
+    assert_no_ansi "$out" || return 1
+
+    out=$("$SCRIPT" monitor --profile general --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'no general' || return 1
+
+    # Sin TTY no se sobrescribe por accidente.
+    out=$("$SCRIPT" baseline --profile esencial --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'ya existe una baseline' || return 1
+
+    out=$("$SCRIPT" baseline --profile esencial --force --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 0 || return 1
+    assert_contains "$out" 'Baseline guardada' || return 1
+
+    out=$("$SCRIPT" baseline --profile esencial --no-anim --no-color --save 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'no guarda informes' || return 1
+
+    out=$(WATCH4ME_STATE_DIR="$TMP/state-empty" "$SCRIPT" monitor --no-anim --no-color 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'no hay baseline' || return 1
+}
+
+# ---------------------------------------------------------------------------
 # Menú y CLI
 # ---------------------------------------------------------------------------
 
@@ -567,7 +789,11 @@ test_menu_sudo_row() {
 
     MENU_SUDO=0
     menu_sudo_ready() { return 1; }
-    assert_contains "$(menu_rows_main)" '[ ] desactivado' || return 1
+    local rows
+    rows=$(menu_rows_main)
+    assert_contains "$rows" '[ ] desactivado' || return 1
+    assert_contains "$rows" 'Crear baseline' || return 1
+    assert_contains "$rows" 'Monitorizar cambios' || return 1
 
     MENU_SUDO=1
     assert_contains "$(menu_rows_main)" '[x] sin caché' || return 1
@@ -587,18 +813,30 @@ test_cli_basic() {
     assert_exit "$?" 0 || return 1
     assert_contains "$out" 'USO' || return 1
     assert_contains "$out" 'watch' || return 1
+    assert_contains "$out" 'BASELINE Y MONITOR' || return 1
+
+    out=$("$SCRIPT" __preview action baseline 2>&1)
+    assert_exit "$?" 0 || return 1
+    assert_contains "$out" 'CREAR BASELINE' || return 1
+
+    out=$("$SCRIPT" __preview action monitor 2>&1)
+    assert_exit "$?" 0 || return 1
+    assert_contains "$out" 'MONITORIZAR CAMBIOS' || return 1
 
     out=$("$SCRIPT" audit --profile inexistente --no-anim --no-color 2>&1)
     rc=$?
     assert_exit "$rc" 64 || return 1
     assert_contains "$out" 'perfil desconocido' || return 1
 
-    for m in baseline monitor; do
-        out=$("$SCRIPT" "$m" 2>&1)
-        rc=$?
-        assert_exit "$rc" 64 || return 1
-        assert_contains "$out" 'M3' || return 1
-    done
+    out=$("$SCRIPT" audit --force 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'solo se usa con baseline' || return 1
+
+    out=$("$SCRIPT" monitor --show 2>&1)
+    rc=$?
+    assert_exit "$rc" 64 || return 1
+    assert_contains "$out" 'solo se usa con baseline' || return 1
 
     out=$("$SCRIPT" watch --interval 0 2>&1)
     rc=$?
@@ -788,6 +1026,9 @@ main() {
         test_watch_exit_and_diff \
         test_watch_sudo_state \
         test_net01_virtual \
+        test_baseline_store \
+        test_baseline_compare \
+        test_baseline_cli \
         test_menu_sudo_row \
         test_cli_basic \
         test_explain \

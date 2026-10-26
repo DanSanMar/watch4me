@@ -6,6 +6,16 @@ have() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Directorio de estado interno. WATCH4ME_STATE_DIR permite aislarlo en las
+# pruebas o moverlo sin tocar el resto del programa.
+state_dir() {
+    local d=${WATCH4ME_STATE_DIR:-}
+    [ -n "$d" ] || d="${SCRIPT_DIR:-$PWD}/state"
+    d=${d%/}
+    [ -n "$d" ] || d='/'
+    printf '%s' "$d"
+}
+
 is_root() {
     [ "${EUID:-$(id -u)}" -eq 0 ]
 }
